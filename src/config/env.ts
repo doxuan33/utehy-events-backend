@@ -36,6 +36,6 @@ export const env = parsed.data;
 
 // Helper to get CORS origins as array or boolean
 export const getCorsOrigins = (): string | string[] | boolean => {
-  if (!env.FRONTEND_URL) return true; // Allow all in dev if not set
+  if (!env.FRONTEND_URL || env.FRONTEND_URL === '*') return true; // Allow all origins
   return env.FRONTEND_URL.split(',').map((url: string) => url.trim());
 };
