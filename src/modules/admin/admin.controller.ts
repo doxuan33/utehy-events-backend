@@ -33,6 +33,22 @@ export const adminController = {
     } catch (err) { next(err); }
   },
 
+  // GET /api/v1/admin/reports/training-points/export
+  async exportTrainingPointsExcel(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const buffer = await adminService.exportTrainingPointsExcel();
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader(
+        'Content-Disposition',
+        'attachment; filename="bang-diem-ren-luyen.xlsx"'
+      );
+      return res.send(buffer);
+    } catch (err) { next(err); }
+  },
+
   // GET /api/v1/admin/reports/pages
   async getPageStats(req: AuthRequest, res: Response, next: NextFunction) {
     try {

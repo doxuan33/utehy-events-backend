@@ -1,4 +1,5 @@
 import prisma from '../../config/database';
+import ExcelJS from 'exceljs';
 
 export const adminService = {
 
@@ -85,20 +86,18 @@ export const adminService = {
     });
 
     return {
-      summary: {
-        total_users: totalUsers,
-        total_students: totalStudents,
-        total_page_admins: totalPageAdmins,
-        total_pages: totalPages,
-        total_events: totalEvents,
-        pending_events: pendingEvents,
-        approved_events: approvedEvents,
-        total_registrations: totalRegistrations,
-        total_checkins: totalCheckins,
-        checkin_rate: totalRegistrations > 0
-          ? Math.round((totalCheckins / totalRegistrations) * 100)
-          : 0,
-      },
+      total_users: totalUsers,
+      total_students: totalStudents,
+      total_page_admins: totalPageAdmins,
+      total_pages: totalPages,
+      total_events: totalEvents,
+      pending_events: pendingEvents,
+      approved_events: approvedEvents,
+      total_registrations: totalRegistrations,
+      total_checkins: totalCheckins,
+      checkin_rate: totalRegistrations > 0
+        ? Math.round((totalCheckins / totalRegistrations) * 100)
+        : 0,
       events_by_category: eventsByCategory.map(e => ({
         category: e.category_id ? categoryMap.get(e.category_id) : 'Chưa phân loại',
         count: e._count.id,
@@ -321,5 +320,92 @@ export const adminService = {
         closed:   events.filter(e => e.status === 'CLOSED').length,
       },
     };
+  },
+
+  // ── XUẤT EXCEL ĐIỂM RÈN LUYỆN ────────────────────────────
+  async exportTrainingPointsExcel() {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Bảng điểm rèn luyện');
+
+    // Define columns
+    worksheet.columns = [
+      { header: 'STT', key: 'stt', width: 5 },
+      { header: 'MSSV', key: 'student_id', width: 18 },
+      { header: 'Họ Tên', key: 'full_name', width: 35 },
+      { header: 'Lớp', key: 'class_name', width: 15 },
+      { header: 'Tổng Điểm RL', key: 'training_points', width: 15 },
+    ];
+
+    // Header style
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF059669' }, // emerald-600
+    };
+
+    // Fetch all attendances (registrations with status = ATTENDED)
+    const attendances = await prisma.registration.findMany({
+      where: { status: 'ATTENDED' },
+      include: {
+        user: { select: { id: true } },
+        event: { select: { training_points: true } },
+      },
+    });
+
+    // Sum training points per user
+    const userPoints: Record<number, number> = {};
+    attendances.forEach((a) => {
+      userPoints[a.user.id] = (userPoints[a.user.id] || 0) + (a.event.training_points || 0);
+    });
+
+    // Fetch all student profiles
+    const profiles = await prisma.profile.findMany({
+      where: { user: { role: 'STUDENT' } },
+      include: {
+        user: { select: { id: true } },
+      },
+    });
+
+    // Sort by points descending
+    const sortedProfiles = profiles.sort((a, b) => {
+      const pointsA = userPoints[a.user.id] || 0;
+      const pointsB = userPoints[b.user.id] || 0;
+      return pointsB - pointsA;
+    });
+
+    // Add data rows
+    sortedProfiles.forEach((profile, idx) => {
+      const points = userPoints[profile.user.id] || 0;
+      const row = worksheet.addRow({
+        stt: idx + 1,
+        student_id: profile.student_id || '',
+        full_name: profile.full_name || '',
+        class_name: profile.class_name || '',
+        training_points: points,
+      });
+      // Alternating row colors
+      if (idx % 2 === 1) {
+        row.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFF9FAFB' }, // gray-50
+        };
+      }
+    });
+
+    // Format numeric column
+    worksheet.getColumn('training_points').numFmt = '#,##0';
+
+    // Auto-fit columns
+    worksheet.columns.forEach((col) => {
+      col.width = Math.max(col.width, col.header.toString().length + 2);
+    });
+
+    // Generate buffer
+    const buffer = await workbook.xlsx.writeBuffer();
+    return buffer;
   },
 };

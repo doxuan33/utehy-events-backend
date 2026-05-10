@@ -16,6 +16,7 @@ router.get('/events/pending', adminController.getPendingEvents);
 
 // ── Báo cáo ──────────────────────────────────────────────────
 router.get('/reports/training-points', adminController.getTrainingPointsReport);
+router.get('/reports/training-points/export', adminController.exportTrainingPointsExcel);
 router.get('/reports/pages',           adminController.getPageStats);
 router.get('/reports/events',          adminController.getEventStats);
 
