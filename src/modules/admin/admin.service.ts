@@ -358,7 +358,8 @@ export const adminService = {
     // Sum training points per user
     const userPoints: Record<number, number> = {};
     attendances.forEach((a) => {
-      userPoints[a.user.id] = (userPoints[a.user.id] || 0) + (a.event.training_points || 0);
+      const userId = Number(a.user.id);
+      userPoints[userId] = (userPoints[userId] || 0) + (a.event.training_points || 0);
     });
 
     // Fetch all student profiles
@@ -371,14 +372,17 @@ export const adminService = {
 
     // Sort by points descending
     const sortedProfiles = profiles.sort((a, b) => {
-      const pointsA = userPoints[a.user.id] || 0;
-      const pointsB = userPoints[b.user.id] || 0;
+      const userIdA = Number(a.user.id);
+      const userIdB = Number(b.user.id);
+      const pointsA = userPoints[userIdA] || 0;
+      const pointsB = userPoints[userIdB] || 0;
       return pointsB - pointsA;
     });
 
     // Add data rows
     sortedProfiles.forEach((profile, idx) => {
-      const points = userPoints[profile.user.id] || 0;
+      const userId = Number(profile.user.id);
+      const points = userPoints[userId] || 0;
       const row = worksheet.addRow({
         stt: idx + 1,
         student_id: profile.student_id || '',
@@ -401,7 +405,10 @@ export const adminService = {
 
     // Auto-fit columns
     worksheet.columns.forEach((col) => {
-      col.width = Math.max(col.width, col.header.toString().length + 2);
+      if (col && col.header !== undefined) {
+        const headerLen = col.header ? col.header.toString().length : 0;
+        col.width = Math.max(col.width ?? headerLen, headerLen + 2);
+      }
     });
 
     // Generate buffer
