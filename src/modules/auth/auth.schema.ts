@@ -7,15 +7,17 @@ export const registerSchema = z.object({
      .min(8, 'Mật khẩu phải có ít nhất 8 ký tự'),
   full_name: z.string().min(2, 'Họ tên phải có ít nhất 2 ký tự').max(150),
    student_id: z
+      .string()
+      .regex(/^[a-zA-Z0-9]*$/, 'MSSV không hợp lệ')
+      .optional()
+      .or(z.literal('')),
+   class_name: z.string().max(50).optional().or(z.literal('')),
+   faculty: z.string().max(150).optional().or(z.literal('')),
+   phone: z
      .string()
-     .regex(/^[a-zA-Z0-9]*$/, 'MSSV không hợp lệ')
-     .optional(),
-  class_name: z.string().max(50).optional(),
-  faculty: z.string().max(150).optional(),
-  phone: z
-    .string()
-    .regex(/^(0|\+84)[0-9]{9}$/, 'Số điện thoại không hợp lệ')
-    .optional(),
+     .regex(/^(0|\+84)[0-9]{9}$/, 'Số điện thoại không hợp lệ')
+     .optional()
+     .or(z.literal('')),
   role: z.enum(['STUDENT', 'PAGE_ADMIN', 'SYSTEM_ADMIN']).optional(),
 });
 
