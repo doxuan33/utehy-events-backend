@@ -4,6 +4,15 @@ import { env } from '../../config/env';
 // Khởi tạo Gemini client
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
 
+// Helper: bóc tách JSON từ text có thể chứa markdown code block
+function extractJsonFromString(text: string): string {
+  // Loại bỏ markdown code fence: ```json ... ``` hoặc ``` ... ```
+  let cleaned = text.trim();
+  cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+  cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
+  return cleaned.trim();
+}
+
 export const aiService = {
 
   // ── TẠO NỘI DUNG SỰ KIỆN (PAGE_ADMIN) ───────────────────────
@@ -36,16 +45,9 @@ Trả về CHÍNH XÁC JSON sau (không thêm text nào khác):
 
       const responseText = result.response.text();
 
-      // Parse JSON từ response
-      let jsonStart = responseText.indexOf('{');
-      let jsonEnd = responseText.lastIndexOf('}') + 1;
-      
-      if (jsonStart === -1 || jsonEnd === -1) {
-        throw new Error('AI không trả về JSON hợp lệ');
-      }
-
-      const jsonString = responseText.substring(jsonStart, jsonEnd);
-      const parsed = JSON.parse(jsonString);
+      // Extract và Parse JSON
+      const cleanedText = extractJsonFromString(responseText);
+      const parsed = JSON.parse(cleanedText);
 
       // Validate required fields
       if (!parsed.title || !parsed.description || !parsed.tags) {
@@ -59,8 +61,8 @@ Trả về CHÍNH XÁC JSON sau (không thêm text nào khác):
       };
 
     } catch (error: any) {
-      console.error('Error generating event content:', error);
-      throw new Error('Lỗi khi tạo nội dung: ' + error.message);
+      console.error('AI Service Error:', error);
+      throw new Error('Không thể xử lý phản hồi từ AI');
     }
   },
 
@@ -105,16 +107,9 @@ Mô tả: ${description || 'Không có mô tả'}
 
       const responseText = result.response.text();
 
-      // Parse JSON từ response
-      let jsonStart = responseText.indexOf('{');
-      let jsonEnd = responseText.lastIndexOf('}') + 1;
-      
-      if (jsonStart === -1 || jsonEnd === -1) {
-        throw new Error('AI không trả về JSON hợp lệ');
-      }
-
-      const jsonString = responseText.substring(jsonStart, jsonEnd);
-      const parsed = JSON.parse(jsonString);
+      // Extract và Parse JSON
+      const cleanedText = extractJsonFromString(responseText);
+      const parsed = JSON.parse(cleanedText);
 
       // Validate required fields
       if (typeof parsed.isSafe !== 'boolean' || typeof parsed.score !== 'number') {
@@ -123,13 +118,13 @@ Mô tả: ${description || 'Không có mô tả'}
 
       return {
         isSafe: parsed.isSafe,
-        score: Math.max(1, Math.min(100, Math.round(parsed.score))), // Clamp 1-100
+        score: Math.max(1, Math.min(100, Math.round(parsed.score))),
         reason: parsed.reason || 'Không có lý do',
       };
 
     } catch (error: any) {
-      console.error('Error analyzing event:', error);
-      throw new Error('Lỗi khi phân tích sự kiện: ' + error.message);
+      console.error('AI Service Error:', error);
+      throw new Error('Không thể xử lý phản hồi từ AI');
     }
   },
 };
