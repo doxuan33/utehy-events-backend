@@ -30,7 +30,7 @@ export const aiController = {
         return sendError(res, parsed.error.issues[0].message, 400);
       }
 
-      const result = await aiService.analyzeEventQuality(parsed.data);
+      const result = await aiService.analyzeEventQuality(parsed.data as any);
       return sendSuccess(res, result, 'Phân tích sự kiện thành công');
     } catch (err: any) {
       console.error('Error in analyzeEvent:', err);

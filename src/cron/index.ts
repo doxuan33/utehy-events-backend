@@ -6,7 +6,7 @@ import { logger } from '../shared/utils/logger';
 import { CreateNotificationInput } from '../modules/notifications/notifications.schema';
 
 // ── Job 1: Nhắc nhở sự kiện (mỗi 15 phút) ─────────────────────
-const eventReminderJob = cron.createTask('*/15 * * * *', async () => {
+const eventReminderJob = cron.schedule('*/15 * * * *', async () => {
   try {
     const now = new Date();
     const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000);
@@ -75,10 +75,10 @@ const eventReminderJob = cron.createTask('*/15 * * * *', async () => {
   } catch (error: any) {
     logger.error('[CRON EVENT_REMINDER] Lỗi:', error?.message);
   }
-}, { noOverlap: true });
+}, { scheduled: true });
 
 // ── Job 2: Tự động đóng sự kiện & gửi thông báo đánh giá (mỗi 5 phút) ─────────────────
-const eventCloseJob = cron.createTask('*/5 * * * *', async () => {
+const eventCloseJob = cron.schedule('*/5 * * * *', async () => {
   try {
     const now = new Date();
 
@@ -152,7 +152,7 @@ const eventCloseJob = cron.createTask('*/5 * * * *', async () => {
   } catch (error: any) {
     logger.error('[CRON EVENT_CLOSE] Lỗi:', error?.message);
   }
-}, { noOverlap: true });
+}, { scheduled: true });
 
 // ── Khởi tạo toàn bộ cron jobs ───────────────────────────────
 export function initCronJobs() {
