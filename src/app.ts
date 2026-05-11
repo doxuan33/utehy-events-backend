@@ -16,6 +16,7 @@ import notificationsRoutes from './modules/notifications/notifications.routes';
 import adminRoutes from './modules/admin/admin.routes';
 import uploadRouter from "./modules/upload/upload.routes";
 import webhookRouter from "./modules/webhook/webhook.routes";
+import aiRoutes from './modules/ai/ai.routes';
 import { initializeSocket } from './socket';
 import { initCronJobs } from './cron';
 
@@ -47,6 +48,7 @@ app.use('/api/v1/notifications', notificationsRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use("/api/v1/upload", uploadRouter);
 app.use('/api/v1/webhook', webhookRouter);
+app.use('/api/v1/ai', aiRoutes);
 
 // 404 Handler
 app.use((req, res) => {

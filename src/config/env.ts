@@ -14,6 +14,7 @@ const envSchema = z.object({
   REDIS_PORT: z.string().default('6379'),
   REDIS_PASSWORD: z.string().optional(),
   GOOGLE_FORM_WEBHOOK_SECRET: z.string().default(''),
+  GEMINI_API_KEY: z.string(),
   FRONTEND_URL: z.string().default('http://localhost:3000'), // Comma-separated allowed origins
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.string().optional(),
