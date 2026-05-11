@@ -17,6 +17,7 @@ export const registerSchema = z.object({
     .string()
     .regex(/^(0|\+84)[0-9]{9}$/, 'Số điện thoại không hợp lệ')
     .optional(),
+  role: z.enum(['STUDENT', 'PAGE_ADMIN', 'SYSTEM_ADMIN']).optional(),
 });
 
 export const loginSchema = z.object({

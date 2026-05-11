@@ -57,8 +57,8 @@ export const authService = {
         data: {
           email: input.email,
           password: hashedPassword,
-          role: 'STUDENT',
-        },
+          role: input.role ? input.role : 'STUDENT'
+        }
       });
 
       await tx.profile.create({
@@ -68,15 +68,15 @@ export const authService = {
           student_id: input.student_id,
           class_name: input.class_name,
           faculty: input.faculty,
-          phone: input.phone,
-        },
+          phone: input.phone
+        }
       });
 
       return newUser;
     });
 
     // 5. Tạo tokens
-    const accessToken  = generateAccessToken({ id: user.id, role: user.role });
+    const accessToken = generateAccessToken({ id: user.id, role: user.role });
     const refreshToken = generateRefreshToken({ id: user.id, role: user.role });
 
     // 6. Lưu refresh token vào DB
@@ -84,8 +84,8 @@ export const authService = {
       data: {
         user_id: user.id,
         token: hashToken(refreshToken),
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 ngày
-      },
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 ngày
+      }
     });
 
     return {
