@@ -36,7 +36,7 @@ Trả về CHÍNH XÁC JSON sau (không thêm text nào khác):
 }
 `;
 
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', generationConfig: { responseMimeType: "application/json" } });
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro', generationConfig: { responseMimeType: "application/json" } });
 
       const result = await model.generateContent([
         systemPrompt,
@@ -61,8 +61,8 @@ Trả về CHÍNH XÁC JSON sau (không thêm text nào khác):
       };
 
     } catch (error: any) {
-      console.error('AI Service Error:', error);
-      throw new Error('Không thể xử lý phản hồi từ AI');
+      console.error('AI Service Error Chi Tiết:', error?.message || error);
+      throw new Error(error?.message || 'Không thể xử lý phản hồi từ AI');
     }
   },
 
@@ -91,7 +91,7 @@ Trả về CHÍNH XÁC JSON sau:
 }
 `;
 
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', generationConfig: { responseMimeType: "application/json" } });
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro', generationConfig: { responseMimeType: "application/json" } });
 
       const eventInfo = `
 Tiêu đề: ${title}
@@ -123,8 +123,8 @@ Mô tả: ${description || 'Không có mô tả'}
       };
 
     } catch (error: any) {
-      console.error('AI Service Error:', error);
-      throw new Error('Không thể xử lý phản hồi từ AI');
+      console.error('AI Service Error Chi Tiết:', error?.message || error);
+      throw new Error(error?.message || 'Không thể xử lý phản hồi từ AI');
     }
   },
 };
