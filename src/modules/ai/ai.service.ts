@@ -1,6 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { env } from '../../config/env';
-import { sendError } from '../../shared/utils/response';
 
 // Khởi tạo Gemini client
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
@@ -61,7 +60,7 @@ Trả về CHÍNH XÁC JSON sau (không thêm text nào khác):
 
     } catch (error: any) {
       console.error('Error generating event content:', error);
-      throw sendError(null, 'Lỗi khi tạo nội dung: ' + error.message, 500);
+      throw new Error('Lỗi khi tạo nội dung: ' + error.message);
     }
   },
 
@@ -130,7 +129,7 @@ Mô tả: ${description || 'Không có mô tả'}
 
     } catch (error: any) {
       console.error('Error analyzing event:', error);
-      throw sendError(null, 'Lỗi khi phân tích sự kiện: ' + error.message, 500);
+      throw new Error('Lỗi khi phân tích sự kiện: ' + error.message);
     }
   },
 };

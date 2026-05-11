@@ -16,8 +16,9 @@ export const aiController = {
 
       const result = await aiService.generateEventContent(parsed.data.prompt);
       return sendSuccess(res, result, 'Tạo nội dung sự kiện thành công');
-    } catch (err) {
-      next(err);
+    } catch (err: any) {
+      console.error('Error in generateContent:', err);
+      return sendError(res, err.message || 'Internal Server Error', 500);
     }
   },
 
@@ -31,8 +32,9 @@ export const aiController = {
 
       const result = await aiService.analyzeEventQuality(parsed.data);
       return sendSuccess(res, result, 'Phân tích sự kiện thành công');
-    } catch (err) {
-      next(err);
+    } catch (err: any) {
+      console.error('Error in analyzeEvent:', err);
+      return sendError(res, err.message || 'Internal Server Error', 500);
     }
   },
 
