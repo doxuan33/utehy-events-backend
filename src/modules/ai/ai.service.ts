@@ -36,12 +36,12 @@ Trả về CHÍNH XÁC JSON sau (không thêm text nào khác):
 }
 `;
 
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash', generationConfig: { responseMimeType: "application/json" } });
+         const model = genAI.getGenerativeModel({ model: 'gemini-flash-lite-latest', generationConfig: { responseMimeType: "application/json" } });
 
-        const result = await model.generateContent([
-          systemPrompt,
-          `Từ khóa/Chủ đề: "${prompt}"`
-        ]);
+         const result = await model.generateContent([
+           systemPrompt,
+           `Từ khóa/Chủ đề: "${prompt}"`
+         ]);
 
       const responseText = result.response.text();
 
@@ -91,9 +91,9 @@ Trả về CHÍNH XÁC JSON sau:
 }
 `;
 
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash', generationConfig: { responseMimeType: "application/json" } });
+         const model = genAI.getGenerativeModel({ model: 'gemini-flash-lite-latest', generationConfig: { responseMimeType: "application/json" } });
 
-        const eventInfo = `
+         const eventInfo = `
 Tiêu đề: ${title}
 Mô tả: ${description || 'Không có mô tả'}
 Địa điểm: ${location || 'Không xác định'}
