@@ -13,5 +13,11 @@ export const analyzeEventSchema = z.object({
   organizer: z.string().optional(),
 });
 
+// ── Generate Event Poster ────────────────────────────────────────
+export const generatePosterSchema = z.object({
+  description: z.string().min(3, 'Vui lòng cung cấp mô tả chủ đề sự kiện'),
+});
+
 export type GenerateContentInput = z.infer<typeof generateContentSchema>;
 export type AnalyzeEventInput = z.infer<typeof analyzeEventSchema>;
+export type GeneratePosterInput = z.infer<typeof generatePosterSchema>;

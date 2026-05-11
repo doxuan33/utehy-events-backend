@@ -11,4 +11,7 @@ router.post('/generate-content', authenticate, authorize('PAGE_ADMIN', 'SYSTEM_A
 // POST /api/v1/ai/analyze-event - Cần quyền SYSTEM_ADMIN
 router.post('/analyze-event', authenticate, authorize('SYSTEM_ADMIN'), aiController.analyzeEvent);
 
+// POST /api/v1/ai/generate-poster - Cần quyền PAGE_ADMIN
+router.post('/generate-poster', authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), aiController.generatePoster);
+
 export default router;
