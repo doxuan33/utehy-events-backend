@@ -2,15 +2,14 @@ import { z } from 'zod';
 
 export const registerSchema = z.object({
   email: z.string().email('Email không hợp lệ'),
-  password: z
-    .string()
-    .min(8, 'Mật khẩu phải có ít nhất 8 ký tự')
-    .regex(/[0-9]/, 'Mật khẩu phải có ít nhất 1 chữ số'),
+   password: z
+     .string()
+     .min(8, 'Mật khẩu phải có ít nhất 8 ký tự'),
   full_name: z.string().min(2, 'Họ tên phải có ít nhất 2 ký tự').max(150),
-  student_id: z
-    .string()
-    .regex(/^\d{8}$/, 'MSSV phải gồm đúng 8 chữ số')
-    .optional(),
+   student_id: z
+     .string()
+     .regex(/^[a-zA-Z0-9]*$/, 'MSSV không hợp lệ')
+     .optional(),
   class_name: z.string().max(50).optional(),
   faculty: z.string().max(150).optional(),
   phone: z

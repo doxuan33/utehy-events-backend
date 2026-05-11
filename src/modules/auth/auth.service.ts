@@ -57,7 +57,7 @@ export const authService = {
         data: {
           email: input.email,
           password: hashedPassword,
-          role: input.role ? input.role : 'STUDENT'
+           role: input.role || 'STUDENT'
         }
       });
 

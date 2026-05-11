@@ -13,10 +13,11 @@ export const authController = {
   // POST /api/v1/auth/register
   async register(req: Request, res: Response, next: NextFunction) {
     try {
-      const parsed = registerSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return sendError(res, parsed.error.issues[0].message, 400);
-      }
+     const parsed = registerSchema.safeParse(req.body);
+     if (!parsed.success) {
+         console.log('>>> ZOD VALIDATION ERROR:', parsed.error.issues);
+         return sendError(res, parsed.error.issues[0].message, 400);
+     }
       const result = await authService.register(parsed.data);
       return sendSuccess(res, result, 'Đăng ký thành công', 201);
     } catch (err: any) {
