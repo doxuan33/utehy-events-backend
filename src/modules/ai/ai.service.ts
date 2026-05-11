@@ -5,15 +5,6 @@ import { env } from '../../config/env';
 // Khởi tạo Gemini client
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
 
-// Types for Google Imagen API response
-interface ImagenPrediction {
-  bytesBase64Encoded: string;
-}
-
-interface ImagenResponse {
-  predictions: ImagenPrediction[];
-}
-
 // Type for Cloudinary upload response
 interface CloudinaryUploadResult {
   secure_url: string;
@@ -148,42 +139,24 @@ Mô tả: ${description || 'Không có mô tả'}
     async generateEventPoster(description: string) {
       try {
         // 1. Tối ưu prompt với hướng dẫn thiết kế
-        const optimizedPrompt = `${description}. A modern, elegant digital background. Use a smooth, high-quality gradient color scheme featuring vibrant green, deep blue, gold, and clean white. STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO NUMBERS, AND NO LOGOS IN THE IMAGE. Leave ample empty negative space for future text overlay.`;
+        const fullPrompt = "A modern, elegant digital background. Use a smooth, high-quality gradient color scheme featuring vibrant green, deep blue, gold, and clean white. STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO NUMBERS, AND NO LOGOS IN THE IMAGE. Leave ample empty negative space for future text overlay. " + description;
 
-        // 2. Gọi Google Imagen API trực tiếp qua fetch
-        const imagenUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${env.GEMINI_API_KEY}`;
+        // 2. Gọi Pollinations AI API (GET, không cần API Key)
+        const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=1024&height=576&nologo=true`;
 
-        const response = await fetch(imagenUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            instances: [
-              {
-                prompt: optimizedPrompt,
-              },
-            ],
-            parameters: {
-              sampleCount: 1,
-            },
-          }),
+        const response = await fetch(url, {
+          method: 'GET',
         });
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({})) as any;
-          throw new Error(`Google Imagen API lỗi ${response.status}: ${errorData.error?.message || response.statusText}`);
+          throw new Error(`Pollinations API lỗi ${response.status}: ${response.statusText}`);
         }
 
-        const data = await response.json() as ImagenResponse;
-
-        // Kiểm tra cấu trúc response
-        if (!data.predictions || !data.predictions[0] || !data.predictions[0].bytesBase64Encoded) {
-          throw new Error('Google Imagen API không trả về dữ liệu ảnh hợp lệ');
-        }
-
-        // 3. Lấy chuỗi Base64 và thêm prefix
-        const base64Image = `data:image/jpeg;base64,${data.predictions[0].bytesBase64Encoded}`;
+        // 3. Lấy ArrayBuffer và chuyển sang Base64
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const base64Data = buffer.toString('base64');
+        const base64Image = `data:image/jpeg;base64,${base64Data}`;
 
         // 4. Upload lên Cloudinary
         const uploadResult = await new Promise<CloudinaryUploadResult>((resolve, reject) => {

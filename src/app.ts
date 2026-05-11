@@ -24,10 +24,12 @@ const app = express();
 
 // ── Middlewares bảo mật ──────────────────────────────
 app.use(helmet());
-app.use(cors({ 
+app.use(cors({
   origin: getCorsOrigins(),
   credentials: true,
-  optionsSuccessStatus: 200 
+  optionsSuccessStatus: 200,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));

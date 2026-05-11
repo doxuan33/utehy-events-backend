@@ -15,7 +15,7 @@ const envSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   GOOGLE_FORM_WEBHOOK_SECRET: z.string().default(''),
   GEMINI_API_KEY: z.string(),
-  FRONTEND_URL: z.string().default('http://localhost:3000'), // Comma-separated allowed origins
+  FRONTEND_URL: z.string().default('*'), // Allow all origins by default, comma-separated for specific origins
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.string().optional(),
   SMTP_USER: z.string().optional(),
@@ -37,6 +37,12 @@ export const env = parsed.data;
 
 // Helper to get CORS origins as array or boolean
 export const getCorsOrigins = (): string | string[] | boolean => {
-  if (!env.FRONTEND_URL || env.FRONTEND_URL === '*') return true; // Allow all origins
+  // In development, allow all origins for easier testing
+  if (env.NODE_ENV === 'development') {
+    return true;
+  }
+  if (!env.FRONTEND_URL || env.FRONTEND_URL === '*') {
+    return true;
+  }
   return env.FRONTEND_URL.split(',').map((url: string) => url.trim());
 };
