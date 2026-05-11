@@ -36,7 +36,7 @@ Trả về CHÍNH XÁC JSON sau (không thêm text nào khác):
 }
 `;
 
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', generationConfig: { responseMimeType: "application/json" } });
 
       const result = await model.generateContent([
         systemPrompt,
@@ -91,7 +91,7 @@ Trả về CHÍNH XÁC JSON sau:
 }
 `;
 
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', generationConfig: { responseMimeType: "application/json" } });
 
       const eventInfo = `
 Tiêu đề: ${title}
