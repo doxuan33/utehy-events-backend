@@ -139,7 +139,7 @@ Mô tả: ${description || 'Không có mô tả'}
     async generateEventPoster(description: string) {
       try {
         // 1. Tối ưu prompt với hướng dẫn thiết kế
-        const fullPrompt = "A modern, elegant digital background. Use a smooth, high-quality gradient color scheme featuring vibrant green, deep blue, gold, and clean white. STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO NUMBERS, AND NO LOGOS IN THE IMAGE. Leave ample empty negative space for future text overlay. " + description;
+        const fullPrompt = `A breathtaking, premium blank event background matching the theme: ${description}. High-end digital art, 3D abstract fluid waves using elegant green, deep blue, sparkling gold, and clean white gradients. Cinematic lighting, 8k resolution, highly detailed, masterpieces. STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO NUMBERS, NO WATERMARKS, AND NO LOGOS. Leave the center completely empty and clean for typography overlay.`;
 
         // 2. Gọi Pollinations AI API (GET, không cần API Key)
         const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=1024&height=576&nologo=true`;
