@@ -35,10 +35,10 @@ export const importStudentsSchema = z.object({
   students: z.array(z.object({
     student_id: z.string().min(1, 'MSSV không được để trống'),
     full_name: z.string().min(1, 'Họ tên không được để trống'),
-    class_name: z.string().optional(),
-    faculty: z.string().optional(),
-    email: z.string().email('Email không hợp lệ').optional(),
-    phone: z.string().optional(),
+    class_name: z.string().optional().or(z.literal('')),
+    faculty: z.string().optional().or(z.literal('')),
+    email: z.string().email('Email không hợp lệ').optional().or(z.literal('')),
+    phone: z.string().optional().or(z.literal('')),
   })).min(1, 'Danh sách sinh viên không được để trống'),
 });
 
