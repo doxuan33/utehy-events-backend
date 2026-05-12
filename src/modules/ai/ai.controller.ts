@@ -54,4 +54,20 @@ export const aiController = {
      }
    },
 
+   // POST /api/v1/ai/chat  — Chatbot tư vấn sự kiện thực tế
+   async chat(req: AuthRequest, res: Response, next: NextFunction) {
+     try {
+       const { message } = req.body;
+       if (!message || typeof message !== 'string') {
+         return sendError(res, 'Vui lòng cung cấp câu hỏi (message)', 400);
+       }
+
+       const reply = await aiService.generateChatResponse(message);
+       return sendSuccess(res, { reply }, 'Chatbot phản hồi thành công');
+     } catch (err: any) {
+       console.error('Error in chat:', err);
+       return sendError(res, err.message || 'Internal Server Error', 500);
+     }
+   },
+
  };
