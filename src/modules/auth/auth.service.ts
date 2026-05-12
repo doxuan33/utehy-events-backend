@@ -163,6 +163,29 @@ export const authService = {
         throw { statusCode: 401, message: msg };
     }
 
+    // Fetch managed_pages with page info for non-STUDENT users
+    let managedPages: any[] = [];
+    if (user.role !== 'STUDENT') {
+      const pageMembers = await prisma.pageMember.findMany({
+        where: { user_id: user.id },
+        include: { page: true },
+      });
+      managedPages = pageMembers.map((pm: any) => ({
+        page_id: pm.page_id,
+        is_owner: pm.is_owner,
+        joined_at: pm.joined_at,
+        page: {
+          id: pm.page.id,
+          name: pm.page.name,
+          slug: pm.page.slug,
+          avatar_url: pm.page.avatar_url,
+          cover_url: pm.page.cover_url,
+          description: pm.page.description,
+          is_verified: pm.page.is_verified,
+        },
+      }));
+    }
+
     // Tạo tokens
     const accessToken  = generateAccessToken({ id: user.id, role: user.role });
     const refreshToken = generateRefreshToken({ id: user.id, role: user.role });
@@ -187,6 +210,7 @@ export const authService = {
         student_id: user.profile?.student_id,
         avatar_url: user.profile?.avatar_url,
         training_points: user.profile?.training_points,
+        managed_pages: managedPages,
         },
     };
     },
@@ -253,12 +277,30 @@ export const authService = {
         profile: {
           include: { user_badges: { include: { badge: true } } },
         },
+        managed_pages: {
+          include: { page: true },
+        },
       },
     });
 
     if (!user) {
       throw { statusCode: 404, message: 'Không tìm thấy người dùng' };
     }
+
+    const managedPages = user.managed_pages.map((pm: any) => ({
+      page_id: pm.page_id,
+      is_owner: pm.is_owner,
+      joined_at: pm.joined_at,
+      page: {
+        id: pm.page.id,
+        name: pm.page.name,
+        slug: pm.page.slug,
+        avatar_url: pm.page.avatar_url,
+        cover_url: pm.page.cover_url,
+        description: pm.page.description,
+        is_verified: pm.page.is_verified,
+      },
+    }));
 
     return {
       id: user.id,
@@ -271,7 +313,8 @@ export const authService = {
       phone: user.profile?.phone,
       avatar_url: user.profile?.avatar_url,
       training_points: user.profile?.training_points,
-      badges: user.profile?.user_badges.map((ub) => ({
+      managed_pages: managedPages,
+      badges: user.profile?.user_badges.map((ub: any) => ({
         id: ub.badge.id,
         name: ub.badge.name,
         icon_url: ub.badge.icon_url,
