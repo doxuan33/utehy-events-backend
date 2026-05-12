@@ -454,27 +454,6 @@ export const usersService = {
 
     return results;
   },
-                },
-              },
-            });
-
-            results.success++;
-          } catch (err: any) {
-            results.failed++;
-            const student_id = (data.student_id || data.MSSV || 'N/A').toString();
-            results.errors.push({
-              row: rowIndex,
-              student_id,
-              message: err.message || 'Lỗi không xác định'
-            });
-            // Re-throw để rollback entire batch on any error
-            throw err;
-          }
-        }
-      });
-    }
-
-    return results;
-  },
-
 };
+
+export default usersService;
