@@ -6,11 +6,7 @@ export const registerSchema = z.object({
      .string()
      .min(8, 'Mật khẩu phải có ít nhất 8 ký tự'),
   full_name: z.string().min(2, 'Họ tên phải có ít nhất 2 ký tự').max(150),
-   student_id: z
-      .string()
-      .regex(/^[a-zA-Z0-9]*$/, 'MSSV không hợp lệ')
-      .optional()
-      .or(z.literal('')),
+    student_id: z.string().max(50).optional().or(z.literal('')),
    class_name: z.string().max(50).optional().or(z.literal('')),
    faculty: z.string().max(150).optional().or(z.literal('')),
    phone: z
