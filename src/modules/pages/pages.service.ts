@@ -59,26 +59,21 @@ export const pagesService = {
     });
   },
 
-  // ── LẤY CHI TIẾT 1 TRANG (THEO UUID HOẶC SLUG) ─────────────────────────────────
-  async getPageByIdOrSlug(slugOrId: string, userId?: string) {
-    // Regex kiểm tra xem chuỗi truyền vào có phải là UUID (chuẩn 36 ký tự) hay không
+  // ── LẤY THÔNG TIN TRANG CHI TIẾT (Hỗ trợ cả ID và Slug) ────────
+  async getPageByIdOrSlug(slugOrId: string) {
+    // Kiểm tra xem chuỗi đầu vào có phải là UUID (ID của Fanpage) hay không
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slugOrId);
 
     const page = await prisma.page.findFirst({
       where: isUuid ? { id: slugOrId } : { slug: slugOrId },
       include: {
-        members: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                email: true,
-                profile: { select: { full_name: true, avatar_url: true, student_id: true } as any },
-              },
-            },
+        _count: {
+          select: {
+            followers: true,
+            events: true,
+            posts: true,
           },
         },
-        _count: { select: { followers: true, events: true, posts: true } },
       },
     });
 
@@ -86,16 +81,7 @@ export const pagesService = {
       throw { statusCode: 404, message: 'Không tìm thấy trang CLB' };
     }
 
-    // Kiểm tra user hiện tại có đang follow không
-    let isFollowing = false;
-    if (userId) {
-      const follow = await prisma.pageFollower.findUnique({
-        where: { page_id_user_id: { page_id: page.id, user_id: userId } },
-      });
-      isFollowing = !!follow;
-    }
-
-    return { ...page, is_following: isFollowing };
+    return page;
   },
 
   // ── LẤY CHI TIẾT 1 TRANG THEO ID ─────────────────────────

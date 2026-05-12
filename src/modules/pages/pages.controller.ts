@@ -29,10 +29,8 @@ export const pagesController = {
   // GET /api/v1/pages/:slug
   async getPageBySlug(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const result = await pagesService.getPageByIdOrSlug(
-        getParam(req.params.slug),
-        req.user?.id
-      );
+      // Sửa gọi hàm getPageByIdOrSlug thay vì getPageBySlug
+      const result = await pagesService.getPageByIdOrSlug(getParam(req.params.slug));
       return sendSuccess(res, result, 'Lấy thông tin trang thành công');
     } catch (err) { next(err); }
   },
