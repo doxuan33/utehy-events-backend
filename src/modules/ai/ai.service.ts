@@ -44,7 +44,7 @@ export const aiService = {
  }
  `;
 
-          const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash', generationConfig: { responseMimeType: "application/json" } });
+            const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest', generationConfig: { responseMimeType: "application/json" } });
 
           const result = await model.generateContent([
             systemPrompt,
@@ -68,18 +68,15 @@ export const aiService = {
          tags: Array.isArray(parsed.tags) ? parsed.tags : [],
        };
 
-     } catch (error: any) {
-       console.error('AI Service Error Chi Tiết:', error?.message || error);
-       // Graceful fallback cho lỗi 503
-       if (error.message?.includes('503') || error?.status === 503) {
-         return {
-           title: 'Dịch vụ tạm thời không khả dụng',
-           description: 'Xin lỗi, hệ thống AI hiện đang quá tải. Bạn vui lòng thử lại sau vài phút nhé!',
-           tags: ['service-unavailable'],
-         };
-       }
-       throw new Error(error?.message || 'Không thể xử lý phản hồi từ AI');
-     }
+      } catch (error: any) {
+        console.error('AI Service Error Chi Tiết:', error?.message || error);
+        // Graceful fallback cho mọi lỗi
+        return {
+          title: 'Dịch vụ tạm thời không khả dụng',
+          description: 'Xin lỗi, hệ thống AI hiện đang quá tải hoặc có lỗi. Bạn vui lòng thử lại sau vài phút nhé!',
+          tags: ['service-unavailable'],
+        };
+      }
    },
 
     // ── PHÂN TÍCH CHẤT LƯỢNG SỰ KIỆN (SYSTEM_ADMIN) ───────────
@@ -107,7 +104,7 @@ export const aiService = {
  }
  `;
 
-           const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash', generationConfig: { responseMimeType: "application/json" } });
+const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest', generationConfig: { responseMimeType: "application/json" } });
 
            const eventInfo = `
  Tiêu đề: ${title}
@@ -140,15 +137,12 @@ export const aiService = {
 
       } catch (error: any) {
         console.error('AI Service Error Chi Tiết:', error?.message || error);
-        // Graceful fallback cho lỗi 503
-        if (error.message?.includes('503') || error?.status === 503) {
-          return {
-            isSafe: true,
-            score: 50,
-            reason: 'Không thể phân tích do hệ thống AI quá tải. Vui lòng thử lại sau.',
-          };
-        }
-        throw new Error(error?.message || 'Không thể xử lý phản hồi từ AI');
+        // Graceful fallback cho mọi lỗi
+        return {
+          isSafe: true,
+          score: 50,
+          reason: 'Không thể phân tích do hệ thống AI quá tải hoặc có lỗi. Vui lòng thử lại sau.',
+        };
       }
     },
 
@@ -186,8 +180,8 @@ Nhiệm vụ:
 
 Câu hỏi của sinh viên: ${userMessage}`;
 
-        // 4. Gọi Gemini với model ổn định
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+         // 4. Gọi Gemini với model ổn định
+         const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
         const result = await model.generateContent(systemPrompt);
 
         // 5. Trả về text đơn giản
