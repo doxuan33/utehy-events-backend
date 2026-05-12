@@ -46,53 +46,56 @@ export const eventsService = {
     return event;
   },
 
-  // ── LẤY DANH SÁCH SỰ KIỆN ────────────────────────────────
-  async getEvents(query: GetEventsQuery, role?: string) {
-    const { page, limit, status, category_id, search, page_id } = query;
-    const skip = (page - 1) * limit;
+   // ── LẤY DANH SÁCH SỰ KIỆN ────────────────────────────────
+   async getEvents(query: GetEventsQuery, role?: string, userPageId?: string) {
+     const { page, limit, status, category_id, search, page_id } = query;
+     const skip = (page - 1) * limit;
 
-    // Sinh viên chỉ thấy sự kiện APPROVED
-    // Admin thấy tất cả, Page Admin thấy của page mình
-    const statusFilter = role === 'SYSTEM_ADMIN'
-      ? status
-      : role === 'PAGE_ADMIN'
-        ? status
-        : 'APPROVED';
+     // Sinh viên chỉ thấy sự kiện APPROVED
+     // Admin thấy tất cả, Page Admin thấy của page mình
+     const statusFilter = role === 'SYSTEM_ADMIN'
+       ? status
+       : role === 'PAGE_ADMIN'
+         ? status
+         : 'APPROVED';
 
-    const where: any = {
-      ...(statusFilter && { status: statusFilter }),
-      ...(category_id && { category_id }),
-      ...(page_id && { page_id }),
-      ...(search && {
-        title: { contains: search },
-      }),
-    };
+     // For PAGE_ADMIN, override page_id with the user's managed page_id for security
+     const finalPageId = (role === 'PAGE_ADMIN' && userPageId) ? userPageId : page_id;
 
-    const [events, total] = await Promise.all([
-      prisma.event.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { start_time: 'asc' },
-        include: {
-          page: { select: { id: true, name: true, avatar_url: true } },
-          category: true,
-          _count: { select: { registrations: true } },
-        },
-      }),
-      prisma.event.count({ where }),
-    ]);
+     const where: any = {
+       ...(statusFilter && { status: statusFilter }),
+       ...(category_id && { category_id }),
+       ...(finalPageId && { page_id: finalPageId }),
+       ...(search && {
+         title: { contains: search },
+       }),
+     };
 
-    return {
-      data: events,
-      meta: {
-        total,
-        page,
-        limit,
-        total_pages: Math.ceil(total / limit),
-      },
-    };
-  },
+     const [events, total] = await Promise.all([
+       prisma.event.findMany({
+         where,
+         skip,
+         take: limit,
+         orderBy: { start_time: 'asc' },
+         include: {
+           page: { select: { id: true, name: true, avatar_url: true } },
+           category: true,
+           _count: { select: { registrations: true } },
+         },
+       }),
+       prisma.event.count({ where }),
+     ]);
+
+     return {
+       data: events,
+       meta: {
+         total,
+         page,
+         limit,
+         total_pages: Math.ceil(total / limit),
+       },
+     };
+   },
 
   // ── LẤY CHI TIẾT 1 SỰ KIỆN ───────────────────────────────
   async getEventById(eventId: string, userId?: string) {
