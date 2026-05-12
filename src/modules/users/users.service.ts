@@ -350,81 +350,110 @@ export const usersService = {
       return cleaned;
     };
 
+    const DEFAULT_PASSWORD = 'Student@123';
     const results = { success: 0, failed: 0, errors: [] as { row: number; student_id: string; message: string }[] };
     const batchSize = 50;
 
     for (let i = 0; i < students.length; i += batchSize) {
       const batch = students.slice(i, i + batchSize);
       
-      await prisma.$transaction(async (tx) => {
-        for (let j = 0; j < batch.length; j++) {
-          const rowIndex = i + j + 2; // +2 vì Excel có header và bắt đầu từ dòng 2
-          const data = batch[j];
-          
-          try {
-            const studentIdRaw = data.student_id || data.MSSV || data['Mã số sinh viên'];
-            if (!studentIdRaw) {
-              throw new Error('Thiếu MSSV');
-            }
-
-            const studentId = cleanString(studentIdRaw);
-            if (!/^\d{8,10}$/.test(studentId)) {
-              throw new Error(`MSSV không hợp lệ: ${studentId}`);
-            }
-
-            const fullNameRaw = data.full_name || data['Họ và tên'] || data['Họ tên'];
-            if (!fullNameRaw) {
-              throw new Error('Thiếu họ tên');
-            }
-            const full_name = capitalizeWords(cleanString(fullNameRaw));
-
-            const class_name = data.class_name || data['Lớp'] || data['Lớp học'];
-            const class_clean = class_name ? cleanString(class_name).toUpperCase() : null;
-
-            const faculty = data.faculty || data['Khoa'] || data['Tên khoa'];
-            const faculty_clean = faculty ? capitalizeWords(cleanString(faculty)) : null;
-
-            const phoneRaw = data.phone || data['Số điện thoại'] || data['SDT'];
-            const phone = phoneRaw ? cleanPhone(phoneRaw) : null;
-            if (phone && !/^(0|\+84)[0-9]{9}$/.test(phone)) {
-              throw new Error(`Số điện thoại không hợp lệ: ${phone}`);
-            }
-
-            const emailRaw = data.email || data['Email'];
-            const email = emailRaw ? cleanString(emailRaw).toLowerCase() : `${studentId}@student.utehy.edu.vn`;
+      // Process each batch in a transaction for atomicity within batch
+      // But don't fail entire import if one batch fails - just record errors
+      try {
+        await prisma.$transaction(async (tx) => {
+          for (let j = 0; j < batch.length; j++) {
+            const rowIndex = i + j + 2;
+            const data = batch[j];
             
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-              throw new Error(`Email không hợp lệ: ${email}`);
-            }
-
-            const existingUser = await tx.user.findFirst({
-              where: { OR: [{ email }, { profile: { student_id: studentId } }] },
-              include: { profile: true }
-            });
-
-            if (existingUser) {
-              const isDuplicate = existingUser.profile?.student_id === studentId;
-              if (isDuplicate) {
-                throw new Error('Đã tồn tại trong hệ thống');
+            try {
+              const studentIdRaw = data.student_id || data.MSSV || data['Mã số sinh viên'];
+              if (!studentIdRaw) {
+                throw new Error('Thiếu MSSV');
               }
-            }
 
-            const hashedPassword = await bcrypt.hash(studentId, 12);
+              const studentId = cleanString(studentIdRaw);
+              if (!/^\d{8,10}$/.test(studentId)) {
+                throw new Error(`MSSV không hợp lệ: ${studentId}`);
+              }
 
-            await tx.user.create({
-              data: {
-                email,
-                password: hashedPassword,
-                role: 'STUDENT',
-                profile: {
-                  create: {
-                    full_name,
-                    student_id: studentId,
-                    class_name: class_clean,
-                    faculty: faculty_clean,
-                    phone,
-                    training_points: 0,
+              const fullNameRaw = data.full_name || data['Họ và tên'] || data['Họ tên'];
+              if (!fullNameRaw) {
+                throw new Error('Thiếu họ tên');
+              }
+              const full_name = capitalizeWords(cleanString(fullNameRaw));
+
+              const class_name = data.class_name || data['Lớp'] || data['Lớp học'];
+              const class_clean = class_name ? cleanString(class_name).toUpperCase() : null;
+
+              const faculty = data.faculty || data['Khoa'] || data['Tên khoa'];
+              const faculty_clean = faculty ? capitalizeWords(cleanString(faculty)) : null;
+
+              const phoneRaw = data.phone || data['Số điện thoại'] || data['SDT'];
+              const phone = phoneRaw ? cleanPhone(phoneRaw) : null;
+              if (phone && !/^(0|\+84)[0-9]{9}$/.test(phone)) {
+                throw new Error(`Số điện thoại không hợp lệ: ${phone}`);
+              }
+
+              const emailRaw = data.email || data['Email'];
+              let email = emailRaw ? cleanString(emailRaw).toLowerCase() : `${studentId}@student.utehy.edu.vn`;
+              
+              if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                throw new Error(`Email không hợp lệ: ${email}`);
+              }
+
+              const existingUser = await tx.user.findFirst({
+                where: { OR: [{ email }, { profile: { student_id: studentId } }] },
+                include: { profile: true }
+              });
+
+              if (existingUser) {
+                const isDuplicate = existingUser.profile?.student_id === studentId;
+                if (isDuplicate) {
+                  throw new Error('Đã tồn tại trong hệ thống');
+                }
+              }
+
+              // Use default password
+              const hashedPassword = await bcrypt.hash(DEFAULT_PASSWORD, 12);
+
+              await tx.user.create({
+                data: {
+                  email,
+                  password: hashedPassword,
+                  role: 'STUDENT',
+                  profile: {
+                    create: {
+                      full_name,
+                      student_id: studentId,
+                      class_name: class_clean,
+                      faculty: faculty_clean,
+                      phone,
+                      training_points: 0,
+                    },
                   },
+                },
+              });
+
+              results.success++;
+            } catch (err: any) {
+              results.failed++;
+              const student_id = (data.student_id || data.MSSV || 'N/A').toString();
+              results.errors.push({
+                row: rowIndex,
+                student_id,
+                message: err.message || 'Lỗi không xác định'
+              });
+            }
+          }
+        });
+      } catch (txError) {
+        // Batch transaction failed unexpectedly - all records in this batch failed
+        // Already recorded individual errors above, continue to next batch
+      }
+    }
+
+    return results;
+  },
                 },
               },
             });
@@ -438,6 +467,8 @@ export const usersService = {
               student_id,
               message: err.message || 'Lỗi không xác định'
             });
+            // Re-throw để rollback entire batch on any error
+            throw err;
           }
         }
       });
