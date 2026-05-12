@@ -59,10 +59,13 @@ export const pagesService = {
     });
   },
 
-  // ── LẤY CHI TIẾT 1 TRANG ─────────────────────────────────
-  async getPageBySlug(slug: string, userId?: string) {
-    const page = await prisma.page.findUnique({
-      where: { slug },
+  // ── LẤY CHI TIẾT 1 TRANG (THEO UUID HOẶC SLUG) ─────────────────────────────────
+  async getPageByIdOrSlug(slugOrId: string, userId?: string) {
+    // Regex kiểm tra xem chuỗi truyền vào có phải là UUID (chuẩn 36 ký tự) hay không
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slugOrId);
+
+    const page = await prisma.page.findFirst({
+      where: isUuid ? { id: slugOrId } : { slug: slugOrId },
       include: {
         members: {
           include: {
