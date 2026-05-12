@@ -354,9 +354,12 @@ export const usersService = {
     const results = { success: 0, failed: 0, errors: [] as { row: number; student_id: string; message: string }[] };
     const batchSize = 50;
 
+    // Gọi 1 lần duy nhất ở ngoài transaction
+    const hashedPassword = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+
     for (let i = 0; i < students.length; i += batchSize) {
       const batch = students.slice(i, i + batchSize);
-      
+
       // Process each batch in a transaction for atomicity within batch
       // But don't fail entire import if one batch fails - just record errors
       try {
@@ -364,7 +367,7 @@ export const usersService = {
           for (let j = 0; j < batch.length; j++) {
             const rowIndex = i + j + 2;
             const data = batch[j];
-            
+
             try {
               const studentIdRaw = data.student_id || data.MSSV || data['Mã số sinh viên'];
               if (!studentIdRaw) {
@@ -396,7 +399,7 @@ export const usersService = {
 
               const emailRaw = data.email || data['Email'];
               let email = emailRaw ? cleanString(emailRaw).toLowerCase() : `${studentId}@student.utehy.edu.vn`;
-              
+
               if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
                 throw new Error(`Email không hợp lệ: ${email}`);
               }
@@ -412,9 +415,6 @@ export const usersService = {
                   throw new Error('Đã tồn tại trong hệ thống');
                 }
               }
-
-              // Use default password
-              const hashedPassword = await bcrypt.hash(DEFAULT_PASSWORD, 12);
 
               await tx.user.create({
                 data: {
@@ -445,7 +445,7 @@ export const usersService = {
               });
             }
           }
-        });
+        }, { timeout: 30000, maxWait: 10000 });
       } catch (txError) {
         // Batch transaction failed unexpectedly - all records in this batch failed
         // Already recorded individual errors above, continue to next batch
