@@ -14,4 +14,7 @@ router.post('/analyze-event', authenticate, authorize('SYSTEM_ADMIN'), aiControl
 // POST /api/v1/ai/generate-poster - Cần quyền PAGE_ADMIN
 router.post('/generate-poster', authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), aiController.generatePoster);
 
+//POST /api/v1/ai/chat (Cho phép mọi user đã đăng nhập chat với bot)
+router.post('/chat', authenticate, aiController.chat);
+
 export default router;
