@@ -21,7 +21,14 @@ import { initializeSocket } from './socket';
 import { initCronJobs } from './cron';
 
 const app = express();
-
+app.use(cors({
+  origin: function (origin, callback) {
+    // Cho phép tất cả các IP gọi vào (phù hợp lúc dev/test LAN)
+    // Hoặc khai báo mảng whitelist chứa 'http://10.224.19.139:5173'
+    callback(null, true);
+  },
+  credentials: true, // Quan trọng nếu có dùng cookie/session
+}));
 // ── Middlewares bảo mật ──────────────────────────────
 app.use(helmet());
 app.use(cors({
