@@ -30,35 +30,33 @@ export const authService = {
 
   // ── ĐĂNG KÝ ──────────────────────────────────────────────
   async register(input: RegisterInput) {
-    // 1. Kiểm tra email đã tồn tại chưa
-    const existingUser = await prisma.user.findUnique({
-      where: { email: input.email },
-    });
+    // [FIX N+1] Gom 2 query check trùng tuần tự thành Promise.all song song:
+    // trước đây findUnique email xong mới findUnique student_id (2 round-trip nối đuôi)
+    const [existingUser, existingProfile] = await Promise.all([
+      prisma.user.findUnique({ where: { email: input.email } }),
+      input.student_id
+        ? prisma.profile.findUnique({ where: { student_id: input.student_id } })
+        : Promise.resolve(null),
+    ]);
+
     if (existingUser) {
       throw { statusCode: 409, message: 'Email này đã được sử dụng' };
     }
-
-    // 2. Kiểm tra MSSV đã tồn tại chưa (nếu có nhập)
-    if (input.student_id) {
-      const existingProfile = await prisma.profile.findUnique({
-        where: { student_id: input.student_id },
-      });
-      if (existingProfile) {
-        throw { statusCode: 409, message: 'MSSV này đã được đăng ký' };
-      }
+    if (existingProfile) {
+      throw { statusCode: 409, message: 'MSSV này đã được đăng ký' };
     }
 
-    // 3. Hash mật khẩu
+    // Hash mật khẩu
     const hashedPassword = await bcrypt.hash(input.password, 12);
 
-    // 4. Tạo user + profile trong 1 transaction
+    // Tạo user + profile trong 1 transaction
     const user = await prisma.$transaction(async (tx) => {
       const newUser = await tx.user.create({
         data: {
           email: input.email,
           password: hashedPassword,
-           role: input.role || 'STUDENT'
-        }
+          role: input.role || 'STUDENT',
+        },
       });
 
       await tx.profile.create({
@@ -68,24 +66,24 @@ export const authService = {
           student_id: input.student_id,
           class_name: input.class_name,
           faculty: input.faculty,
-          phone: input.phone
-        }
+          phone: input.phone,
+        },
       });
 
       return newUser;
     });
 
-    // 5. Tạo tokens
-    const accessToken = generateAccessToken({ id: user.id, role: user.role });
+    // Tạo tokens
+    const accessToken  = generateAccessToken({ id: user.id, role: user.role });
     const refreshToken = generateRefreshToken({ id: user.id, role: user.role });
 
-    // 6. Lưu refresh token vào DB
+    // Lưu refresh token vào DB
     await prisma.refreshToken.create({
       data: {
         user_id: user.id,
         token: hashToken(refreshToken),
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 ngày
-      }
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 ngày
+      },
     });
 
     return {
@@ -110,81 +108,83 @@ export const authService = {
     let user: any = null;
 
     if (isMSSV) {
-        // Sinh viên đăng nhập bằng MSSV
-        const profile = await prisma.profile.findUnique({
+      // Sinh viên đăng nhập bằng MSSV
+      // [FIX N+1] Sinh viên không cần managed_pages → không include pageMember,
+      // tránh JOIN thừa cho đại đa số request login
+      const profile = await prisma.profile.findUnique({
         where: { student_id: identifier },
-        include: {
-            user: true,
-        },
-        });
+        include: { user: true },
+      });
 
-        if (!profile) {
+      if (!profile) {
         throw { statusCode: 401, message: 'MSSV hoặc mật khẩu không đúng' };
-        }
+      }
 
-        user = {
-        ...profile.user,
-        profile,
-        };
+      user = { ...profile.user, profile };
 
     } else {
-        // PAGE_ADMIN / SYSTEM_ADMIN đăng nhập bằng Email
-        const foundUser = await prisma.user.findUnique({
+      // PAGE_ADMIN / SYSTEM_ADMIN đăng nhập bằng Email
+      // [FIX N+1] Gom pageMember vào include ngay trong query user ban đầu,
+      // thay vì fetch user rồi mới query pageMember riêng (2 round-trip → 1)
+      const foundUser = await prisma.user.findUnique({
         where: { email: identifier },
-        include: { profile: true },
-        });
+        include: {
+          profile: true,
+          managed_pages: {
+            include: {
+              page: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                  avatar_url: true,
+                  cover_url: true,
+                  description: true,
+                  is_verified: true,
+                },
+              },
+            },
+          },
+        },
+      });
 
-        if (!foundUser) {
+      if (!foundUser) {
         throw { statusCode: 401, message: 'Email hoặc mật khẩu không đúng' };
-        }
+      }
 
-        // Chặn sinh viên đăng nhập bằng email
-        if (foundUser.role === 'STUDENT') {
+      // Chặn sinh viên đăng nhập bằng email
+      if (foundUser.role === 'STUDENT') {
         throw {
-            statusCode: 400,
-            message: 'Sinh viên vui lòng đăng nhập bằng MSSV',
+          statusCode: 400,
+          message: 'Sinh viên vui lòng đăng nhập bằng MSSV',
         };
-        }
+      }
 
-        user = foundUser;
+      user = foundUser;
     }
 
     // Kiểm tra tài khoản bị khóa
     if (!user.is_active) {
-        throw { statusCode: 403, message: 'Tài khoản đã bị khóa. Vui lòng liên hệ Phòng CTSV' };
+      throw { statusCode: 403, message: 'Tài khoản đã bị khóa. Vui lòng liên hệ Phòng CTSV' };
     }
 
     // So sánh mật khẩu
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
-        const msg = isMSSV
+      const msg = isMSSV
         ? 'MSSV hoặc mật khẩu không đúng'
         : 'Email hoặc mật khẩu không đúng';
-        throw { statusCode: 401, message: msg };
+      throw { statusCode: 401, message: msg };
     }
 
-    // Fetch managed_pages with page info for non-STUDENT users
-    let managedPages: any[] = [];
-    if (user.role !== 'STUDENT') {
-      const pageMembers = await prisma.pageMember.findMany({
-        where: { user_id: user.id },
-        include: { page: true },
-      });
-      managedPages = pageMembers.map((pm: any) => ({
-        page_id: pm.page_id,
-        is_owner: pm.is_owner,
-        joined_at: pm.joined_at,
-        page: {
-          id: pm.page.id,
-          name: pm.page.name,
-          slug: pm.page.slug,
-          avatar_url: pm.page.avatar_url,
-          cover_url: pm.page.cover_url,
-          description: pm.page.description,
-          is_verified: pm.page.is_verified,
-        },
-      }));
-    }
+    // [FIX N+1] managed_pages đã được include sẵn trong query user ở trên (non-STUDENT),
+    // không cần query prisma.pageMember.findMany riêng nữa
+    const managedPages = (user.managed_pages ?? []).map((pm: any) => ({
+      page_id: pm.page_id,
+      is_owner: pm.is_owner,
+      joined_at: pm.joined_at,
+      page: pm.page,
+    }));
 
     // Tạo tokens
     const accessToken  = generateAccessToken({ id: user.id, role: user.role });
@@ -192,17 +192,17 @@ export const authService = {
 
     // Lưu refresh token
     await prisma.refreshToken.create({
-        data: {
+      data: {
         user_id: user.id,
         token: hashToken(refreshToken),
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        },
+      },
     });
 
     return {
-        access_token: accessToken,
-        refresh_token: refreshToken,
-        user: {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      user: {
         id: user.id,
         email: user.email,
         role: user.role,
@@ -211,9 +211,9 @@ export const authService = {
         avatar_url: user.profile?.avatar_url,
         training_points: user.profile?.training_points,
         managed_pages: managedPages,
-        },
+      },
     };
-    },
+  },
 
   // ── LÀM MỚI TOKEN ────────────────────────────────────────
   async refreshToken(token: string) {
@@ -275,10 +275,40 @@ export const authService = {
       where: { id: userId },
       include: {
         profile: {
-          include: { user_badges: { include: { badge: true } } },
+          include: {
+            user_badges: { include: { badge: true } },
+          },
         },
         managed_pages: {
-          include: { page: true },
+          include: {
+            page: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                avatar_url: true,
+                cover_url: true,
+                description: true,
+                is_verified: true,
+                // [FIX N+1] Lấy sẵn số liệu thống kê của page ngay trong query,
+                // tránh N query count riêng lẻ nếu cần hiển thị trên dashboard
+                _count: {
+                  select: {
+                    events: true,      // tổng số sự kiện của page
+                    members: true,     // tổng số thành viên của page
+                    followers: true,   // tổng số người theo dõi
+                  },
+                },
+              },
+            },
+          },
+        },
+        // [FIX N+1] Lấy sẵn _count thống kê của user trong cùng 1 query,
+        // tránh phải gọi thêm query count riêng ở bất kỳ nơi nào dùng getMe
+        _count: {
+          select: {
+            registrations: true, // tổng số đăng ký sự kiện
+          },
         },
       },
     });
@@ -291,15 +321,7 @@ export const authService = {
       page_id: pm.page_id,
       is_owner: pm.is_owner,
       joined_at: pm.joined_at,
-      page: {
-        id: pm.page.id,
-        name: pm.page.name,
-        slug: pm.page.slug,
-        avatar_url: pm.page.avatar_url,
-        cover_url: pm.page.cover_url,
-        description: pm.page.description,
-        is_verified: pm.page.is_verified,
-      },
+      page: pm.page,
     }));
 
     return {
@@ -320,6 +342,8 @@ export const authService = {
         icon_url: ub.badge.icon_url,
         awarded_at: ub.awarded_at,
       })),
+      // Trả về _count để client dùng trực tiếp, không cần gọi thêm
+      _count: user._count,
     };
   },
 };

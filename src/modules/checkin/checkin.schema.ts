@@ -7,8 +7,8 @@ export const scanQrSchema = z.object({
 });
 
 export const manualCheckinSchema = z.object({
-  event_id: z.string().uuid('event_id không hợp lệ'),
-  student_id: z.string().regex(/^\d{8}$/, 'MSSV phải gồm đúng 8 chữ số'),
+  event_id: z.string().min(1, 'event_id không được để trống'),
+  student_id: z.string().min(1, 'MSSV không được để trống'),
 });
 
 export const gpsCheckinSchema = z.object({
@@ -18,6 +18,11 @@ export const gpsCheckinSchema = z.object({
   lng: z.number().min(-180).max(180),
 });
 
+export const importCheckinSchema = z.object({
+  studentIds: z.array(z.string().min(1, 'MSSV không được để trống')),
+});
+
 export type ScanQrInput      = z.infer<typeof scanQrSchema>;
 export type ManualCheckinInput = z.infer<typeof manualCheckinSchema>;
 export type GpsCheckinInput  = z.infer<typeof gpsCheckinSchema>;
+export type ImportCheckinInput = z.infer<typeof importCheckinSchema>;

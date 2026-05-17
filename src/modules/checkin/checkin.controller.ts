@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { checkinService } from './checkin.service';
-import { scanQrSchema, manualCheckinSchema, gpsCheckinSchema } from './checkin.schema';
+import { scanQrSchema, manualCheckinSchema, gpsCheckinSchema, importCheckinSchema } from './checkin.schema';
 import { sendSuccess, sendError } from '../../shared/utils/response';
 import { AuthRequest } from '../../middlewares/authenticate';
 
@@ -41,6 +41,22 @@ export const checkinController = {
         return sendError(res, parsed.error.issues[0].message, 400);
       }
       const result = await checkinService.manualCheckin(req.user!.id, parsed.data);
+      return sendSuccess(res, result, result.message);
+    } catch (err) { next(err); }
+  },
+
+  // POST /api/v1/checkin/events/:eventId/import-checkin (Bulk import checkin)
+  async importCheckinStudents(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const parsed = importCheckinSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return sendError(res, parsed.error.issues[0].message, 400);
+      }
+      const result = await checkinService.importCheckinStudents(
+        getParam(req.params.eventId),
+        req.user!.id,
+        parsed.data.studentIds
+      );
       return sendSuccess(res, result, result.message);
     } catch (err) { next(err); }
   },

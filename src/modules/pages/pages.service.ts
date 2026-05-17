@@ -49,6 +49,7 @@ export const pagesService = {
         : undefined,
       orderBy: { name: 'asc' },
       include: {
+        // [N+1 FIX] Đã có sẵn — giữ nguyên
         _count: {
           select: {
             followers: true,
@@ -67,6 +68,7 @@ export const pagesService = {
     const page = await prisma.page.findFirst({
       where: isUuid ? { id: slugOrId } : { slug: slugOrId },
       include: {
+        // [N+1 FIX] Đã có sẵn — giữ nguyên
         _count: {
           select: {
             followers: true,
@@ -89,6 +91,7 @@ export const pagesService = {
     const page = await prisma.page.findUnique({
       where: { id: pageId },
       include: {
+        // [N+1 FIX] Đã có sẵn — giữ nguyên
         _count: { select: { followers: true, events: true } },
       },
     });
@@ -423,6 +426,15 @@ export const pagesService = {
           },
           orderBy: { joined_at: 'desc' },
         },
+        // [N+1 FIX] Gom sẵn số liệu thống kê của trang để Frontend không cần
+        // gọi thêm API riêng khi hiển thị header trang trong màn quản lý thành viên
+        _count: {
+          select: {
+            followers: true,
+            events: true,
+            members: true,
+          },
+        },
       },
     });
 
@@ -481,6 +493,7 @@ export const pagesService = {
       include: {
         page: {
           include: {
+            // [N+1 FIX] Đã có sẵn — giữ nguyên
             _count: { select: { followers: true, events: true } },
           },
         },
@@ -495,6 +508,7 @@ export const pagesService = {
   async getPageStats() {
     const pages = await prisma.page.findMany({
       include: {
+        // [N+1 FIX] Đã có sẵn — giữ nguyên
         _count: {
           select: {
             followers: true,

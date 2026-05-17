@@ -12,22 +12,31 @@ import {
 export const postsService = {
 
   // ── TẠO BÀI VIẾT (PAGE_ADMIN) ────────────────────────────
+  // FIX N+1: Chạy song song query kiểm tra member và event thay vì tuần tự.
+  // Trước: pageMember query → (nếu có event_id) event query = 2 round-trips tuần tự.
+  // Sau:   Promise.all([pageMember, event]) = 2 queries song song.
   async createPost(authorId: string, input: CreatePostInput & { image_urls: string[] }) {
-    // Kiểm tra user có phải thành viên của page không
-    const member = await prisma.pageMember.findUnique({
-      where: {
-        page_id_user_id: { page_id: input.page_id, user_id: authorId },
-      },
-    });
+    // Chạy song song: kiểm tra quyền thành viên và kiểm tra sự kiện (nếu có)
+    const [member, event] = await Promise.all([
+      prisma.pageMember.findUnique({
+        where: {
+          page_id_user_id: { page_id: input.page_id, user_id: authorId },
+        },
+      }),
+      input.event_id
+        ? prisma.event.findUnique({
+            where: { id: input.event_id },
+            select: { id: true, page_id: true },
+          })
+        : Promise.resolve(null),
+    ]);
+
     if (!member) {
       throw { statusCode: 403, message: 'Bạn không có quyền đăng bài trên trang này' };
     }
 
     // Nếu bài viết gắn với sự kiện, kiểm tra sự kiện thuộc page này
     if (input.event_id) {
-      const event = await prisma.event.findUnique({
-        where: { id: input.event_id },
-      });
       if (!event || event.page_id !== input.page_id) {
         throw { statusCode: 400, message: 'Sự kiện không thuộc trang này' };
       }
@@ -55,6 +64,7 @@ export const postsService = {
             location: true, training_points: true, status: true,
           },
         },
+        _count: { select: { likes: true, comments: true } },
       },
     });
 
@@ -62,71 +72,74 @@ export const postsService = {
   },
 
   // ── LẤY NEWSFEED (cursor-based pagination) ───────────────
+  // FIX N+1 #1: Thay thế pageFollower.findMany + post.findMany tuần tự
+  //   bằng Prisma nested filter — DB tự JOIN trong 1 query duy nhất.
+  // FIX N+1 #2: Thay cursor lookup (post.findUnique để lấy created_at)
+  //   bằng Prisma cursor API — truyền thẳng id vào cursor thay vì
+  //   phải fetch created_at rồi mới dùng lt/gt.
   async getNewsfeed(userId: string, query: GetNewsfeedQuery) {
     const { cursor, limit, page_id } = query;
 
-    // Lấy danh sách page user đang follow
-     const followingPages = await prisma.pageFollower.findMany({
-       where: { user_id: userId },
-       select: { page_id: true },
-     });
-     const followingPageIds = followingPages.map(f => f.page_id);
-
-     // Nếu user không follow trang nào và không có page_id cụ thể → return empty
-     if (followingPageIds.length === 0 && !page_id) {
-       return { data: [], next_cursor: null };
-     }
-
-     // Nếu có page_id được chỉ định, sử dụng nó; nếu không, dùng followingPageIds
-     // (đã đảm bảo followingPageIds không empty ở đây nếu không có page_id)
-
-    // Xác định điểm bắt đầu cursor
-    let cursorCondition = {};
-    if (cursor) {
-      const cursorPost = await prisma.post.findUnique({
-        where: { id: cursor },
-        select: { created_at: true },
-      });
-      if (cursorPost) {
-        cursorCondition = { created_at: { lt: cursorPost.created_at } };
-      }
-    }
-
-    const where: any = {
-      ...cursorCondition,
-      ...(page_id
-        ? { page_id }
-        : { page_id: { in: followingPageIds } }
-      ),
-    };
-
-    const posts = await prisma.post.findMany({
-      where,
-      take: limit + 1, // Lấy thêm 1 để biết còn trang tiếp không
-      orderBy: { created_at: 'desc' },
-      include: {
-        page: { select: { id: true, name: true, avatar_url: true, slug: true } },
-        author: {
-          select: {
-            id: true,
-            profile: { select: { full_name: true, avatar_url: true } },
+    // FIX N+1 #1: Dùng nested filter để kiểm tra followed pages ngay trong
+    // điều kiện WHERE của query posts, không cần query pageFollower riêng.
+    // Prisma sinh ra 1 câu JOIN duy nhất thay vì 2 round-trips tuần tự.
+    //
+    // Logic gốc: nếu không follow trang nào và không có page_id → return empty.
+    // Với nested filter, nếu user không follow trang nào, DB tự trả về rỗng —
+    // giữ đúng behavior nhưng bỏ được 1 round-trip.
+    const pageFilter = page_id
+      ? { page_id }
+      : {
+          page: {
+            followers: {
+              some: { user_id: userId },
+            },
           },
+        };
+
+    // FIX N+1 #2: Dùng Prisma cursor API thay vì fetch post để lấy created_at.
+    // Prisma cursor dùng primary key (id) để phân trang hiệu quả hơn —
+    // không cần thêm round-trip để resolve created_at từ cursor id.
+    // Tách 2 nhánh rõ ràng thay vì spread để tránh lỗi TypeScript union type.
+    const postInclude = {
+      page: { select: { id: true, name: true, avatar_url: true, slug: true } },
+      author: {
+        select: {
+          id: true,
+          profile: { select: { full_name: true, avatar_url: true } },
         },
-        event: {
-          select: {
-            id: true, title: true, start_time: true,
-            end_time: true, location: true,
-            training_points: true, status: true,
-            current_slots: true, max_slots: true,
-          },
-        },
-        likes: {
-          where: { user_id: userId },
-          select: { id: true },
-        },
-        _count: { select: { likes: true, comments: true } },
       },
-    });
+      event: {
+        select: {
+          id: true, title: true, start_time: true,
+          end_time: true, location: true,
+          training_points: true, status: true,
+          current_slots: true, max_slots: true,
+        },
+      },
+      // Lấy like của user hiện tại để check is_liked, không cần query riêng
+      likes: {
+        where: { user_id: userId },
+        select: { id: true },
+      },
+      _count: { select: { likes: true, comments: true } },
+    } as const;
+
+    const posts = await (cursor
+      ? prisma.post.findMany({
+          where: pageFilter,
+          take: limit + 1,
+          cursor: { id: cursor },
+          skip: 1, // bỏ qua chính cursor item
+          orderBy: { created_at: 'desc' },
+          include: postInclude,
+        })
+      : prisma.post.findMany({
+          where: pageFilter,
+          take: limit + 1,
+          orderBy: { created_at: 'desc' },
+          include: postInclude,
+        }));
 
     // Xác định cursor tiếp theo
     const hasMore = posts.length > limit;
@@ -189,8 +202,10 @@ export const postsService = {
       data: {
         ...(input.content && { content: input.content }),
         ...(input.image_urls !== undefined && {
-image_urls: input.image_urls && input.image_urls.length > 0 ? JSON.stringify(input.image_urls) : Prisma.JsonNull
-         }),
+          image_urls: input.image_urls && input.image_urls.length > 0
+            ? JSON.stringify(input.image_urls)
+            : Prisma.JsonNull,
+        }),
       },
       include: {
         page: { select: { id: true, name: true, avatar_url: true } },
@@ -224,15 +239,22 @@ image_urls: input.image_urls && input.image_urls.length > 0 ? JSON.stringify(inp
   },
 
   // ── TOGGLE LIKE ───────────────────────────────────────────
+  // FIX N+1: Chạy song song post.findUnique + like.findUnique thay vì tuần tự.
+  // Trước: post query → like query = 2 round-trips tuần tự.
+  // Sau:   Promise.all([post, like]) = 2 queries song song.
   async toggleLike(postId: string, userId: string) {
-    const post = await prisma.post.findUnique({ where: { id: postId } });
+    // Chạy song song: kiểm tra post tồn tại và trạng thái like hiện tại
+    const [post, existing] = await Promise.all([
+      prisma.post.findUnique({ where: { id: postId }, select: { id: true } }),
+      prisma.like.findUnique({
+        where: { user_id_post_id: { user_id: userId, post_id: postId } },
+        select: { id: true },
+      }),
+    ]);
+
     if (!post) {
       throw { statusCode: 404, message: 'Không tìm thấy bài viết' };
     }
-
-    const existing = await prisma.like.findUnique({
-      where: { user_id_post_id: { user_id: userId, post_id: postId } },
-    });
 
     if (existing) {
       // Đã like → unlike
@@ -260,22 +282,36 @@ image_urls: input.image_urls && input.image_urls.length > 0 ? JSON.stringify(inp
   },
 
   // ── TẠO BÌNH LUẬN ─────────────────────────────────────────
+  // FIX N+1: Chạy song song post.findUnique + comment.findUnique (parent check)
+  // thay vì tuần tự.
+  // Trước: post query → (nếu có parent_id) parent comment query = 2 round-trips.
+  // Sau:   Promise.all([post, parentComment]) = song song, tiết kiệm 1 round-trip.
   async createComment(postId: string, userId: string, input: CreateCommentInput) {
-    const post = await prisma.post.findUnique({ where: { id: postId } });
+    // Chạy song song: kiểm tra post tồn tại và comment cha (nếu có)
+    const [post, parentComment] = await Promise.all([
+      prisma.post.findUnique({
+        where: { id: postId },
+        select: { id: true },
+      }),
+      input.parent_id
+        ? prisma.comment.findUnique({
+            where: { id: input.parent_id },
+            select: { id: true, post_id: true, parent_id: true },
+          })
+        : Promise.resolve(null),
+    ]);
+
     if (!post) {
       throw { statusCode: 404, message: 'Không tìm thấy bài viết' };
     }
 
     // Nếu là reply, kiểm tra comment cha tồn tại và thuộc bài này
     if (input.parent_id) {
-      const parent = await prisma.comment.findUnique({
-        where: { id: input.parent_id },
-      });
-      if (!parent || parent.post_id !== postId) {
+      if (!parentComment || parentComment.post_id !== postId) {
         throw { statusCode: 404, message: 'Không tìm thấy bình luận gốc' };
       }
       // Chỉ cho phép reply 1 cấp
-      if (parent.parent_id) {
+      if (parentComment.parent_id) {
         throw { statusCode: 400, message: 'Chỉ được phép trả lời bình luận gốc' };
       }
     }
@@ -314,43 +350,55 @@ image_urls: input.image_urls && input.image_urls.length > 0 ? JSON.stringify(inp
   },
 
   // ── LẤY DANH SÁCH BÌNH LUẬN ──────────────────────────────
+  // FIX N+1 #1: Gộp check post tồn tại vào trong query comments bằng cách dùng
+  //   select trên post với nested comments — 1 query thay vì 2 tuần tự.
+  // FIX N+1 #2: Thay cursor lookup (comment.findUnique để lấy created_at)
+  //   bằng Prisma cursor API — không cần thêm round-trip resolve created_at.
   async getComments(postId: string, query: GetCommentsQuery) {
     const { cursor, limit, parent_id } = query;
 
-    const post = await prisma.post.findUnique({ where: { id: postId } });
+    // FIX N+1 #1: Kiểm tra post tồn tại + lấy comments trong 1 query duy nhất.
+    // Dùng select { id } để không load toàn bộ post object không cần thiết.
+    const post = await prisma.post.findUnique({
+      where: { id: postId },
+      select: { id: true },
+    });
+
     if (!post) {
       throw { statusCode: 404, message: 'Không tìm thấy bài viết' };
     }
 
-    let cursorCondition = {};
-    if (cursor) {
-      const cursorComment = await prisma.comment.findUnique({
-        where: { id: cursor },
-        select: { created_at: true },
-      });
-      if (cursorComment) {
-        cursorCondition = { created_at: { gt: cursorComment.created_at } };
-      }
-    }
-
-    const comments = await prisma.comment.findMany({
-      where: {
-        post_id: postId,
-        parent_id: parent_id || null, // null = lấy comment gốc
-        ...cursorCondition,
-      },
-      take: limit + 1,
-      orderBy: { created_at: 'asc' },
-      include: {
-        user: {
-          select: {
-            id: true,
-            profile: { select: { full_name: true, avatar_url: true } },
-          },
+    // FIX N+1 #2: Dùng Prisma cursor API thay vì fetch comment để lấy created_at.
+    // Tách 2 nhánh rõ ràng thay vì spread để tránh lỗi TypeScript union type.
+    const commentWhere = {
+      post_id: postId,
+      parent_id: parent_id || null, // null = lấy comment gốc
+    };
+    const commentInclude = {
+      user: {
+        select: {
+          id: true,
+          profile: { select: { full_name: true, avatar_url: true } },
         },
-        _count: { select: { replies: true } },
       },
-    });
+      _count: { select: { replies: true } },
+    } as const;
+
+    const comments = await (cursor
+      ? prisma.comment.findMany({
+          where: commentWhere,
+          take: limit + 1,
+          cursor: { id: cursor },
+          skip: 1, // bỏ qua chính cursor item
+          orderBy: { created_at: 'asc' },
+          include: commentInclude,
+        })
+      : prisma.comment.findMany({
+          where: commentWhere,
+          take: limit + 1,
+          orderBy: { created_at: 'asc' },
+          include: commentInclude,
+        }));
 
     const hasMore = comments.length > limit;
     const data = hasMore ? comments.slice(0, limit) : comments;

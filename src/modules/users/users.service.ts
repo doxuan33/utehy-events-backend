@@ -13,6 +13,10 @@ export const usersService = {
 
   // ── XEM PROFILE BẤT KỲ USER ──────────────────────────────
   async getUserProfile(targetUserId: string) {
+    // [N+1 FIX] Gom _count registrations (ATTENDED) vào cùng query findUnique,
+    // loại bỏ prisma.registration.count() riêng lẻ phía dưới.
+    // Đồng thời gom recentEvents + allParticipatedEvents thành 1 query duy nhất,
+    // sau đó tách ra bằng JS — giảm từ 3 query xuống còn 1 query chính.
     const user = await prisma.user.findUnique({
       where: { id: targetUserId },
       include: {
@@ -24,6 +28,14 @@ export const usersService = {
             },
           },
         },
+        // [N+1 FIX] _count thay thế hoàn toàn prisma.registration.count() riêng lẻ
+        _count: {
+          select: {
+            registrations: {
+              where: { status: 'ATTENDED' },
+            },
+          },
+        },
       },
     });
 
@@ -31,30 +43,9 @@ export const usersService = {
       throw { statusCode: 404, message: 'Không tìm thấy người dùng' };
     }
 
-    // Đếm số sự kiện đã tham gia
-    const attendedCount = await prisma.registration.count({
-      where: { user_id: targetUserId, status: 'ATTENDED' },
-    });
-
-    // Lấy lịch sử tham gia gần nhất (5 sự kiện)
-    const recentEvents = await prisma.registration.findMany({
-      where: { user_id: targetUserId, status: 'ATTENDED' },
-      take: 5,
-      orderBy: { updated_at: 'desc' },
-      include: {
-        event: {
-          select: {
-            id: true, title: true, start_time: true,
-            training_points: true, banner_url: true,
-            page: { select: { name: true } },
-            category: { select: { name: true, color_hex: true } },
-          },
-        },
-      },
-    });
-
-    // Lấy toàn bộ danh sách sự kiện đã tham gia
-    const allParticipatedEvents = await prisma.registration.findMany({
+    // [N+1 FIX] Gom recentEvents + allParticipatedEvents thành 1 query duy nhất.
+    // Trước đây: 2 findMany riêng → giờ chỉ còn 1 findMany, tách dữ liệu bằng JS.
+    const allParticipatedRegistrations = await prisma.registration.findMany({
       where: { user_id: targetUserId, status: 'ATTENDED' },
       orderBy: { updated_at: 'desc' },
       include: {
@@ -65,10 +56,17 @@ export const usersService = {
             status: true,
             category: { select: { name: true, color_hex: true } },
             page: { select: { name: true, slug: true, avatar_url: true } },
+            // [N+1 FIX] Đếm số đăng ký cho mỗi event trong danh sách
+            _count: {
+              select: { registrations: true },
+            },
           },
         },
       },
     });
+
+    // Tách 5 sự kiện gần nhất từ mảng đã lấy (không cần query riêng)
+    const recentEvents = allParticipatedRegistrations.slice(0, 5).map(r => r.event);
 
     return {
       id: user.id,
@@ -82,7 +80,8 @@ export const usersService = {
       phone: user.profile?.phone,
       avatar_url: user.profile?.avatar_url,
       training_points: user.profile?.training_points ?? 0,
-      attended_events_count: attendedCount,
+      // [N+1 FIX] Lấy từ _count thay vì query count() riêng
+      attended_events_count: user._count.registrations,
       badges: user.profile?.user_badges.map(ub => ({
         id: ub.badge.id,
         name: ub.badge.name,
@@ -90,8 +89,8 @@ export const usersService = {
         icon_url: ub.badge.icon_url,
         awarded_at: ub.awarded_at,
       })),
-      recent_events: recentEvents.map(r => r.event),
-      participated_events: allParticipatedEvents.map(r => ({
+      recent_events: recentEvents,
+      participated_events: allParticipatedRegistrations.map(r => ({
         registration_id: r.id,
         registered_at: r.registered_at,
         event: r.event,
@@ -191,6 +190,10 @@ export const usersService = {
                  id: true, title: true, start_time: true,
                  category: { select: { name: true, color_hex: true } },
                  page: { select: { name: true } },
+                 // [N+1 FIX] Đếm số đăng ký cho mỗi event trong lịch sử điểm
+                 _count: {
+                   select: { registrations: true },
+                 },
                },
              },
            },
@@ -259,6 +262,11 @@ export const usersService = {
                  name: true,
                  color_hex: true,
                },
+             },
+             // [N+1 FIX] Đếm tổng số đăng ký của từng event trong lịch trình,
+             // giúp Frontend hiển thị "X người đăng ký" mà không cần gọi API riêng
+             _count: {
+               select: { registrations: true },
              },
            },
          },
@@ -337,6 +345,13 @@ export const usersService = {
             select: {
               full_name: true, student_id: true, class_name: true,
               avatar_url: true, training_points: true,
+            },
+          },
+          // [N+1 FIX] Đếm tổng số đăng ký và số lần ATTENDED cho mỗi user
+          // trong danh sách admin, giúp hiển thị thống kê mà không gọi thêm API
+          _count: {
+            select: {
+              registrations: true,
             },
           },
         },

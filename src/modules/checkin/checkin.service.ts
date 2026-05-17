@@ -2,7 +2,7 @@ import prisma from '../../config/database';
 import { qrService } from './qr.service';
 import { haversineDistance } from '../../shared/utils/geoHelper';
 import { usersService } from '../users/users.service';
-import { ScanQrInput, ManualCheckinInput, GpsCheckinInput } from './checkin.schema';
+import { ScanQrInput, ManualCheckinInput, GpsCheckinInput, ImportCheckinInput } from './checkin.schema';
 import { notificationsService } from '../notifications/notifications.service';
 
 export const checkinService = {
@@ -37,46 +37,44 @@ export const checkinService = {
       }
     }
 
-    const registration = await prisma.registration.findUnique({
-      where: { user_id_event_id: { user_id: userId, event_id: event.id } },
-    });
+     const registration = await prisma.registration.findUnique({
+       where: { user_id_event_id: { user_id: userId, event_id: event.id } },
+     });
 
-    if (!registration) {
-      throw { statusCode: 403, message: 'Bạn chưa đăng ký tham gia sự kiện này' };
-    }
+     if (registration?.status === 'ATTENDED') {
+       throw { statusCode: 409, message: 'Bạn đã điểm danh sự kiện này rồi' };
+     }
 
-    if (registration.status === 'ATTENDED') {
-      throw { statusCode: 409, message: 'Bạn đã điểm danh sự kiện này rồi' };
-    }
+     if (registration?.status === 'CANCELLED') {
+       throw { statusCode: 403, message: 'Đăng ký của bạn đã bị hủy' };
+     }
 
-    if (registration.status === 'CANCELLED') {
-      throw { statusCode: 403, message: 'Đăng ký của bạn đã bị hủy' };
-    }
+     const result = await prisma.$transaction(async (tx) => {
+       // Tự động đăng ký nếu chưa có, hoặc cập nhật nếu đã có
+       const updatedRegistration = await tx.registration.upsert({
+         where: { user_id_event_id: { user_id: userId, event_id: event.id } },
+         update: { status: 'ATTENDED' },
+         create: { user_id: userId, event_id: event.id, status: 'ATTENDED' },
+       });
 
-    const result = await prisma.$transaction(async (tx) => {
-      const checkin = await tx.checkin.create({
-        data: {
-          registration_id: registration.id,
-          user_id: userId,
-          qr_token_id: qrToken.id,
-          method: 'QR_SCAN',
-          checkin_lat: input.latitude,
-          checkin_lng: input.longitude,
-          points_awarded: event.training_points,
-        },
-      });
+       const checkin = await tx.checkin.create({
+         data: {
+           registration_id: updatedRegistration.id,
+           user_id: userId,
+           qr_token_id: qrToken.id,
+           method: 'QR_SCAN',
+           checkin_lat: input.latitude,
+           checkin_lng: input.longitude,
+           points_awarded: event.training_points,
+         },
+       });
 
-      await tx.registration.update({
-        where: { id: registration.id },
-        data: { status: 'ATTENDED' },
-      });
-
-      await tx.profile.update({
-        where: { user_id: userId },
-        data: { training_points: { increment: event.training_points } },
-      });
-      return checkin;
-    });
+       await tx.profile.update({
+         where: { user_id: userId },
+         data: { training_points: { increment: event.training_points } },
+       });
+       return checkin;
+     });
 
     await usersService.checkAndAwardBadges(userId);
     await notificationsService.notifyCheckinSuccess(
@@ -126,44 +124,44 @@ export const checkinService = {
       };
     }
 
-    const registration = await prisma.registration.findUnique({
-      where: { user_id_event_id: { user_id: userId, event_id: event.id } },
-    });
+     const registration = await prisma.registration.findUnique({
+       where: { user_id_event_id: { user_id: userId, event_id: event.id } },
+     });
 
-    if (!registration) {
-      throw { statusCode: 403, message: 'Bạn chưa đăng ký tham gia sự kiện này' };
-    }
-    if (registration.status === 'ATTENDED') {
-      throw { statusCode: 409, message: 'Bạn đã điểm danh sự kiện này rồi' };
-    }
-    if (registration.status === 'CANCELLED') {
-      throw { statusCode: 403, message: 'Đăng ký của bạn đã bị hủy' };
-    }
+     if (registration?.status === 'ATTENDED') {
+       throw { statusCode: 409, message: 'Bạn đã điểm danh sự kiện này rồi' };
+     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const checkin = await tx.checkin.create({
-        data: {
-          registration_id: registration.id,
-          user_id: userId,
-          qr_token_id: qrToken.id,
-          method: 'QR_SCAN',
-          checkin_lat: input.lat,
-          checkin_lng: input.lng,
-          points_awarded: event.training_points,
-        },
-      });
+     if (registration?.status === 'CANCELLED') {
+       throw { statusCode: 403, message: 'Đăng ký của bạn đã bị hủy' };
+     }
 
-      await tx.registration.update({
-        where: { id: registration.id },
-        data: { status: 'ATTENDED' },
-      });
+     const result = await prisma.$transaction(async (tx) => {
+       // Tự động đăng ký nếu chưa có, hoặc cập nhật nếu đã có
+       const updatedRegistration = await tx.registration.upsert({
+         where: { user_id_event_id: { user_id: userId, event_id: event.id } },
+         update: { status: 'ATTENDED' },
+         create: { user_id: userId, event_id: event.id, status: 'ATTENDED' },
+       });
 
-      await tx.profile.update({
-        where: { user_id: userId },
-        data: { training_points: { increment: event.training_points } },
-      });
-      return checkin;
-    });
+       const checkin = await tx.checkin.create({
+         data: {
+           registration_id: updatedRegistration.id,
+           user_id: userId,
+           qr_token_id: qrToken.id,
+           method: 'QR_SCAN',
+           checkin_lat: input.lat,
+           checkin_lng: input.lng,
+           points_awarded: event.training_points,
+         },
+       });
+
+       await tx.profile.update({
+         where: { user_id: userId },
+         data: { training_points: { increment: event.training_points } },
+       });
+       return checkin;
+     });
 
     await usersService.checkAndAwardBadges(userId);
     await notificationsService.notifyCheckinSuccess(
@@ -193,10 +191,7 @@ export const checkinService = {
     if (!event) {
       throw { statusCode: 404, message: 'Không tìm thấy sự kiện' };
     }
-
-    if (event.status !== 'ONGOING') {
-      throw { statusCode: 400, message: 'Sự kiện chưa bắt đầu hoặc đã kết thúc điểm danh' };
-    }
+    // Đã gỡ bỏ điều kiện check ONGOING để admin có thể điểm danh bù bất kỳ lúc nào
 
     const isMember = await prisma.pageMember.findUnique({
       where: { page_id_user_id: { page_id: event.page_id, user_id: adminUserId } },
@@ -214,47 +209,103 @@ export const checkinService = {
       throw { statusCode: 404, message: `Không tìm thấy sinh viên có MSSV ${input.student_id}` };
     }
 
-    const registration = await prisma.registration.findUnique({
-      where: { user_id_event_id: { user_id: profile.user.id, event_id: input.event_id } },
-    });
-
-    if (!registration) {
-      throw { statusCode: 403, message: 'Sinh viên này chưa đăng ký tham gia sự kiện' };
-    }
-    if (registration.status === 'ATTENDED') {
-      throw { statusCode: 409, message: 'Sinh viên này đã được điểm danh rồi' };
-    }
-
     await prisma.$transaction(async (tx) => {
-      await tx.checkin.create({
-        data: {
-          registration_id: registration.id,
-          user_id: profile.user.id,
-          method: 'MANUAL',
-          points_awarded: event.training_points,
-        },
+      // Dùng Upsert: Nếu sinh viên chưa từng đăng ký thì hệ thống tự động đăng ký và đánh dấu ATTENDED
+      const registration = await tx.registration.upsert({
+        where: { user_id_event_id: { user_id: profile.user.id, event_id: input.event_id } },
+        update: { status: 'ATTENDED' },
+        create: { user_id: profile.user.id, event_id: input.event_id, status: 'ATTENDED' },
       });
 
-      await tx.registration.update({
-        where: { id: registration.id },
-        data: { status: 'ATTENDED' },
+      // Kiểm tra xem đã có dòng checkin chưa (tránh cộng điểm 2 lần nếu admin lỡ bấm 2 nhát)
+      const existingCheckin = await tx.checkin.findFirst({
+        where: { registration_id: registration.id }
       });
 
-      await tx.profile.update({
-        where: { user_id: profile.user.id },
-        data: { training_points: { increment: event.training_points } },
-      });
+      if (!existingCheckin) {
+        await tx.checkin.create({
+          data: {
+            registration_id: registration.id,
+            user_id: profile.user.id,
+            method: 'MANUAL',
+            points_awarded: event.training_points,
+          },
+        });
+
+        await tx.profile.update({
+          where: { user_id: profile.user.id },
+          data: { training_points: { increment: event.training_points } },
+        });
+      }
     });
 
     await usersService.checkAndAwardBadges(profile.user.id);
 
     return {
       success: true,
-      message: `Điểm danh thủ công thành công cho ${profile.full_name}`,
+      message: `Điểm danh bù thành công cho ${profile.full_name}`,
       student_name: profile.full_name,
       student_id: profile.student_id,
       points_earned: event.training_points,
     };
+  },
+
+  // ── IMPORT ĐIỂM DANH HÀNG LOẠT BẰNG DANH SÁCH MSSV (PAGE_ADMIN) ─
+  async importCheckinStudents(eventId: string, adminUserId: string, studentIds: string[]) {
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) throw { statusCode: 404, message: 'Không tìm thấy sự kiện' };
+
+    const isMember = await prisma.pageMember.findUnique({
+      where: { page_id_user_id: { page_id: event.page_id, user_id: adminUserId } },
+    });
+    if (!isMember) throw { statusCode: 403, message: 'Bạn không có quyền quản lý sự kiện này' };
+
+    // [N+1 FIX] Bổ sung select profile để lấy sẵn full_name, student_id trong cùng 1 query,
+    // tránh phải query lại Profile khi cần log hoặc trả về kết quả chi tiết.
+    const users = await prisma.user.findMany({
+      where: { profile: { student_id: { in: studentIds } } },
+      select: {
+        id: true,
+        profile: {
+          select: {
+            full_name: true,
+            student_id: true,
+          },
+        },
+      },
+    });
+
+    if (users.length === 0) throw { statusCode: 404, message: 'Không tìm thấy sinh viên nào trong hệ thống' };
+
+    let successCount = 0;
+
+    await prisma.$transaction(async (tx) => {
+      for (const user of users) {
+        const registration = await tx.registration.upsert({
+          where: { user_id_event_id: { user_id: user.id, event_id: eventId } },
+          update: { status: 'ATTENDED' },
+          create: { user_id: user.id, event_id: eventId, status: 'ATTENDED' },
+        });
+
+        const existingCheckin = await tx.checkin.findFirst({
+          where: { registration_id: registration.id },
+        });
+
+        if (!existingCheckin) {
+          await tx.checkin.create({
+            data: {
+              registration_id: registration.id,
+              user_id: user.id,
+              method: 'MANUAL',
+              points_awarded: event.training_points,
+            },
+          });
+          successCount++;
+        }
+      }
+    });
+
+    return { message: `Đã điểm danh bù thành công ${successCount} sinh viên.` };
   },
 
   // ── LẤY QR TOKEN CHO SỰ KIỆN ─────────────────────────────
@@ -381,7 +432,17 @@ export const checkinService = {
 
   // ── XEM LỊCH SỬ ĐIỂM DANH (PAGE_ADMIN) ──────────────────
   async getCheckinHistory(eventId: string, adminUserId: string) {
-    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    // [N+1 FIX] Gom event + isMember check + checkin list: dùng findUnique với
+    // _count: { select: { registrations: true } } để trả thêm tổng số đăng ký
+    // của event trong cùng 1 query, giúp Frontend tính tỉ lệ tham dự mà không cần gọi thêm API.
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: {
+        _count: {
+          select: { registrations: true },
+        },
+      },
+    });
 
     if (!event) {
       throw { statusCode: 404, message: 'Không tìm thấy sự kiện' };
@@ -394,13 +455,17 @@ export const checkinService = {
       throw { statusCode: 403, message: 'Bạn không có quyền xem' };
     }
 
+    // [N+1 FIX] Bổ sung include registration để lấy sẵn registered_at và status
+    // của từng đăng ký trong cùng 1 query findMany, tránh Frontend phải gọi thêm
+    // API riêng để biết sinh viên đăng ký lúc nào / trạng thái ban đầu là gì.
     const checkins = await prisma.checkin.findMany({
       where: { registration: { event_id: eventId } },
       orderBy: { checked_in_at: 'asc' },
       include: {
         user: {
           select: {
-            id: true, profile: {
+            id: true,
+            profile: {
               select: {
                 full_name: true, student_id: true, class_name: true,
                 avatar_url: true,
@@ -408,17 +473,28 @@ export const checkinService = {
             },
           },
         },
+        // [N+1 FIX] Lấy thêm registered_at và status từ registration trong cùng query,
+        // tuân thủ quy tắc: giữ nguyên tên cột registered_at, không đổi thành created_at.
+        registration: {
+          select: {
+            registered_at: true,
+            status: true,
+          },
+        },
       },
     });
 
     return {
       event_title: event.title,
+      total_registrations: event._count.registrations,
       total_checkins: checkins.length,
       checkins: checkins.map(c => ({
         id: c.id,
         method: c.method,
         checked_in_at: c.checked_in_at,
         points_awarded: c.points_awarded,
+        registered_at: c.registration.registered_at,
+        registration_status: c.registration.status,
         student: c.user.profile,
       })),
     };

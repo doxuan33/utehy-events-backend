@@ -32,94 +32,97 @@ export const eventsService = {
         start_time: startTime,
         end_time: endTime,
         registration_deadline: registrationDeadline,
-max_slots: input.max_slots,
-         training_points: input.training_points,
-         requires_approval: input.requires_approval,
-         is_global: input.is_global ?? false,
-         registration_type: input.registration_type ?? 'NORMAL',
-         status: 'PENDING',
+        max_slots: input.max_slots,
+        training_points: input.training_points,
+        requires_approval: input.requires_approval,
+        is_global: input.is_global ?? false,
+        registration_type: input.registration_type ?? 'NORMAL',
+        status: 'PENDING',
       },
       include: {
         page: { select: { id: true, name: true, avatar_url: true } },
         category: true,
+        // [N+1 FIX] Gom sẵn số lượt đăng ký để Frontend không cần gọi thêm API
+        _count: { select: { registrations: true } },
       },
     });
 
     return event;
   },
 
-   // ── LẤY DANH SÁCH SỰ KIỆN ────────────────────────────────
-async getEvents(query: GetEventsQuery, role?: string, userPageId?: string, userId?: string) {
-      const { page, limit, status, category_id, search, page_id } = query;
-      const skip = (page - 1) * limit;
+  // ── LẤY DANH SÁCH SỰ KIỆN ────────────────────────────────
+  async getEvents(query: GetEventsQuery, role?: string, userPageId?: string, userId?: string) {
+    const { page, limit, status, category_id, search, page_id } = query;
+    const skip = (page - 1) * limit;
 
-      // Sinh viên chỉ thấy sự kiện APPROVED
-      // Admin thấy tất cả, Page Admin thấy của page mình
-      const statusFilter = role === 'SYSTEM_ADMIN'
+    // Sinh viên chỉ thấy sự kiện APPROVED
+    // Admin thấy tất cả, Page Admin thấy của page mình
+    const statusFilter = role === 'SYSTEM_ADMIN'
+      ? status
+      : role === 'PAGE_ADMIN'
         ? status
-        : role === 'PAGE_ADMIN'
-          ? status
-          : 'APPROVED';
+        : 'APPROVED';
 
-      let whereConditions = [];
+    let whereConditions = [];
 
-      if (statusFilter) {
-        whereConditions.push({ status: statusFilter });
+    if (statusFilter) {
+      whereConditions.push({ status: statusFilter });
+    }
+    if (category_id) {
+      whereConditions.push({ category_id });
+    }
+    if (search) {
+      whereConditions.push({ title: { contains: search } });
+    }
+
+    if (role === 'STUDENT' && userId) {
+      // For student feed: show events from followed pages OR global events
+      const followedPageIds = await prisma.pageFollower
+        .findMany({ where: { user_id: userId } })
+        .then(followers => followers.map(f => f.page_id));
+
+      whereConditions.push({
+        OR: [
+          { page_id: { in: followedPageIds } },
+          { is_global: true },
+        ],
+      });
+    } else {
+      // For PAGE_ADMIN, SYSTEM_ADMIN, or other roles: use original logic
+      const finalPageId = (role === 'PAGE_ADMIN' && userPageId) ? userPageId : page_id;
+      if (finalPageId) {
+        whereConditions.push({ page_id: finalPageId });
       }
-      if (category_id) {
-        whereConditions.push({ category_id });
-      }
-      if (search) {
-        whereConditions.push({ title: { contains: search } });
-      }
+    }
 
-      if (role === 'STUDENT' && userId) {
-        // For student feed: show events from followed pages OR global events
-        const followedPageIds = await prisma.pageFollower
-          .findMany({ where: { user_id: userId } })
-          .then(followers => followers.map(f => f.page_id));
+    const where = whereConditions.length > 0 ? { AND: whereConditions } : {};
 
-        whereConditions.push({
-          OR: [
-            { page_id: { in: followedPageIds } },
-            { is_global: true },
-          ],
-        });
-      } else {
-        // For PAGE_ADMIN, SYSTEM_ADMIN, or other roles: use original logic
-        const finalPageId = (role === 'PAGE_ADMIN' && userPageId) ? userPageId : page_id;
-        if (finalPageId) {
-          whereConditions.push({ page_id: finalPageId });
-        }
-      }
-
-      const where = whereConditions.length > 0 ? { AND: whereConditions } : {};
-
-      const [events, total] = await Promise.all([
-        prisma.event.findMany({
-          where,
-          skip,
-          take: limit,
-          orderBy: { start_time: 'asc' },
-          include: {
-            page: { select: { id: true, name: true, avatar_url: true } },
-            category: true,
-            _count: { select: { registrations: true } },
-          },
-        }),
-        prisma.event.count({ where }),
-      ]);
-
-      return {
-        data: events,
-        meta: {
-          total,
-          page,
-          limit,
-          total_pages: Math.ceil(total / limit),
+    const [events, total] = await Promise.all([
+      prisma.event.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { start_time: 'asc' },
+        include: {
+          page: { select: { id: true, name: true, avatar_url: true } },
+          category: true,
+          // [N+1 FIX] Đã có sẵn — giữ nguyên
+          _count: { select: { registrations: true } },
         },
-      };
-    },
+      }),
+      prisma.event.count({ where }),
+    ]);
+
+    return {
+      data: events,
+      meta: {
+        total,
+        page,
+        limit,
+        total_pages: Math.ceil(total / limit),
+      },
+    };
+  },
 
   // ── LẤY CHI TIẾT 1 SỰ KIỆN ───────────────────────────────
   async getEventById(eventId: string, userId?: string) {
@@ -128,6 +131,7 @@ async getEvents(query: GetEventsQuery, role?: string, userPageId?: string, userI
       include: {
         page: { select: { id: true, name: true, avatar_url: true, slug: true } },
         category: true,
+        // [N+1 FIX] Đã có sẵn — giữ nguyên
         _count: { select: { registrations: true } },
       },
     });
@@ -187,8 +191,10 @@ async getEvents(query: GetEventsQuery, role?: string, userPageId?: string, userI
       include: {
         page: { select: { id: true, name: true } },
         category: true,
+        // [N+1 FIX] Gom sẵn số lượt đăng ký để Frontend không cần gọi thêm API
+        _count: { select: { registrations: true } },
       },
-    }    );
+    });
 
     return updated;
   },
@@ -246,39 +252,46 @@ async getEvents(query: GetEventsQuery, role?: string, userPageId?: string, userI
       throw { statusCode: 400, message: 'Không thể xóa sự kiện đã duyệt hoặc đang diễn ra' };
     }
 
-await prisma.event.delete({ where: { id: eventId } });
+    await prisma.event.delete({ where: { id: eventId } });
   },
 
-   // ── IMPORT DANH SÁCH SINH VIÊN BẮT BUỘC (PAGE_ADMIN) ────────────
-   async importMandatoryStudents(eventId: string, studentIds: string[]) {
-     // Bước 1: Tìm các User có Profile.student_id nằm trong mảng studentIds
-     const profiles = await prisma.profile.findMany({
-       where: { student_id: { in: studentIds } },
-       select: { user_id: true },
-     });
+  // ── IMPORT DANH SÁCH SINH VIÊN BẮT BUỘC (PAGE_ADMIN) ────────────
+  async importMandatoryStudents(eventId: string, studentIds: string[]) {
+    // Bước 1: Tìm các User có Profile.student_id nằm trong mảng studentIds
+    const profiles = await prisma.profile.findMany({
+      where: { student_id: { in: studentIds } },
+      select: { user_id: true },
+    });
 
-     const userIds = profiles.map(p => p.user_id);
+    const userIds = profiles.map(p => p.user_id);
 
-     if (userIds.length === 0) {
-       return { message: 'Không tìm thấy sinh viên nào khớp với danh sách mã sinh viên' };
-     }
+    if (userIds.length === 0) {
+      return { message: 'Không tìm thấy sinh viên nào khớp với danh sách mã sinh viên' };
+    }
 
-     // Bước 2: Tạo bản ghi đăng ký hàng loạt, bỏ qua duplicate
-     const registrations = await prisma.registration.createMany({
-       data: userIds.map(user_id => ({
-         event_id: eventId,
-         user_id,
-         status: 'REGISTERED',
-       })),
-       skipDuplicates: true,
-     });
+    // Bước 2: Tạo bản ghi đăng ký hàng loạt, bỏ qua duplicate
+    const registrations = await prisma.registration.createMany({
+      data: userIds.map(user_id => ({
+        event_id: eventId,
+        user_id,
+        status: 'REGISTERED',
+      })),
+      skipDuplicates: true,
+    });
 
-     return { message: `Đã thêm thành công ${registrations.count} sinh viên vào sự kiện` };
-   },
+    return { message: `Đã thêm thành công ${registrations.count} sinh viên vào sự kiện` };
+  },
 
-   // ── LẤY DANH SÁCH DANH MỤC ───────────────────────────────
-   async getCategories() {
-    return prisma.eventCategory.findMany({ orderBy: { id: 'asc' } });
+  // ── LẤY DANH SÁCH DANH MỤC ───────────────────────────────
+  async getCategories() {
+    return prisma.eventCategory.findMany({
+      orderBy: { id: 'asc' },
+      // [N+1 FIX] Gom sẵn số sự kiện theo danh mục để Frontend hiển thị badge
+      // mà không cần gọi thêm API đếm riêng
+      include: {
+        _count: { select: { events: true } },
+      },
+    });
   },
 
   // ── LẤY DANH SÁCH SỰ KIỆN CHỜ DUYỆT (SYSTEM_ADMIN) ─────
@@ -289,6 +302,7 @@ await prisma.event.delete({ where: { id: eventId } });
       include: {
         page: { select: { id: true, name: true, avatar_url: true } },
         category: true,
+        // [N+1 FIX] Đã có sẵn — giữ nguyên
         _count: { select: { registrations: true } },
       },
     });
@@ -317,6 +331,7 @@ await prisma.event.delete({ where: { id: eventId } });
       include: {
         page: { select: { id: true, name: true, avatar_url: true } },
         category: true,
+        // [N+1 FIX] Đã có sẵn — dùng để tính fillRatio trong scoring
         _count: { select: { registrations: true } },
       },
       orderBy: { start_time: 'asc' },
@@ -339,7 +354,7 @@ await prisma.event.delete({ where: { id: eventId } });
       }
 
       // Category popularity: +5 nếu category có nhiều sự kiện được đăng ký
-      // (DùngfillRatio làm proxy - càng đăng ký nhiều càng phổ biến)
+      // (Dùng fillRatio làm proxy - càng đăng ký nhiều càng phổ biến)
       if (fillRatio > 0.5) {
         score += 5;
       }

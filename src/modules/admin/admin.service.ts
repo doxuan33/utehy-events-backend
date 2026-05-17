@@ -52,6 +52,9 @@ export const adminService = {
         training_points: true,
         page: { select: { name: true } },
         category: { select: { name: true, color_hex: true } },
+        // [N+1 FIX] Đếm tổng số đăng ký thực tế cho từng event trong top 5,
+        // giúp Frontend hiển thị "X lượt đăng ký" mà không cần gọi thêm API.
+        _count: { select: { registrations: true } },
       },
     });
 
@@ -65,6 +68,9 @@ export const adminService = {
         class_name: true,
         training_points: true,
         avatar_url: true,
+        // [N+1 FIX] Đếm số huy hiệu của từng sinh viên trong top 5
+        // để Frontend hiển thị badge count mà không cần gọi thêm API.
+        _count: { select: { user_badges: true } },
       },
     });
 
@@ -131,6 +137,10 @@ export const adminService = {
       include: {
         user: { select: { email: true, is_active: true } },
         user_badges: { include: { badge: true } },
+        // [N+1 FIX] Đếm tổng số huy hiệu cho mỗi sinh viên trong danh sách báo cáo.
+        // badges_count trong response giờ có thể đọc từ _count.user_badges thay vì
+        // tính lại từ độ dài mảng user_badges — nhất quán và rõ ràng hơn cho Frontend.
+        _count: { select: { user_badges: true } },
       },
     });
 
@@ -162,7 +172,8 @@ export const adminService = {
         faculty: p.faculty,
         email: p.user.email,
         training_points: p.training_points,
-        badges_count: p.user_badges.length,
+        // [N+1 FIX] Đọc từ _count thay vì tính lại từ .length
+        badges_count: p._count.user_badges,
         badges: p.user_badges.map(ub => ub.badge.name),
       })),
     };

@@ -11,6 +11,7 @@ router.post('/scan-gps',    authenticate, checkinController.scanGps);      // GP
 
 // ── PAGE ADMIN ĐIỂM DANH THỦ CÔNG ────────────────────────────
 router.post('/manual',   authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), checkinController.manualCheckin);
+router.post('/events/:eventId/import-checkin', authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), checkinController.importCheckinStudents);
 
 // ── QUẢN LÝ BUỔI ĐIỂM DANH ───────────────────────────────────
 router.post('/events/:eventId/start', authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), checkinController.startCheckin);
