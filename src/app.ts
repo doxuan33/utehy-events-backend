@@ -23,13 +23,11 @@ import { initCronJobs } from './cron';
 const app = express();
 app.use(cors({
   origin: function (origin, callback) {
-    // Cho phép tất cả các IP gọi vào (phù hợp lúc dev/test LAN)
-    // Hoặc khai báo mảng whitelist chứa 'http://10.224.19.139:5173'
     callback(null, true);
   },
-  credentials: true, // Quan trọng nếu có dùng cookie/session
+  credentials: true, 
 }));
-// ── Middlewares bảo mật ──────────────────────────────
+
 app.use(helmet());
 app.use(cors({
   origin: getCorsOrigins(),
@@ -41,13 +39,13 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Trust proxy for Render
+
 app.set('trust proxy', 1);
 
-// Rate limiter toàn cục
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 200, message: { success: false, message: 'Quá nhiều request, vui lòng thử lại sau' } }));
 
-// ── Routes ───────────────────────────────────────────
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 10000, message: { success: false, message: 'Quá nhiều request, vui lòng thử lại sau' } }));
+
+// Routes 
 app.get('/health', (req, res) => res.json({ status: 'OK', time: new Date(), service: 'UTEHY Social Backend' }));
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/events', eventsRoutes);
@@ -62,15 +60,14 @@ app.use("/api/v1/upload", uploadRouter);
 app.use('/api/v1/webhook', webhookRouter);
 app.use('/api/v1/ai', aiRoutes);
 
-// 404 Handler
+
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Không tìm thấy route' });
 });
 
-// ── Global Error Handler (phải đặt CUỐI CÙNG) ───────
+
 app.use(errorHandler);
 
-// ── Khởi tạo HTTP Server ─────────────────────────────────
 const PORT = Number(env.PORT) || 3000;
 const server = app.listen(PORT, () => {
   console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`);
@@ -78,16 +75,15 @@ const server = app.listen(PORT, () => {
   console.log(`📅 Time: ${new Date().toISOString()}`);
 });
 
-  // ── Khởi tạo Socket.io ──────────────────────────────────
   const io = initializeSocket(server);
 
-  // Lưu instance để có thể truy cập từ các module khác nếu cần
+ 
   app.set('io', io);
 
-  // ── Khởi tạo Cron Jobs ──────────────────────────────────
+
   initCronJobs();
 
-// Graceful shutdown
+
 const shutdown = () => {
   console.log('\n🛑 Shutting down gracefully...');
   server.close(() => {
@@ -95,7 +91,7 @@ const shutdown = () => {
     process.exit(0);
   });
   
-  // Force shutdown after 10s
+
   setTimeout(() => {
     console.error('Forced shutdown after timeout');
     process.exit(1);
