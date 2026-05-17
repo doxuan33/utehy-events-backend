@@ -1,5 +1,5 @@
 import prisma from '../../config/database';
-import { CreateEventInput, UpdateEventInput, GetEventsQuery } from './events.schema';
+import { CreateEventInput, UpdateEventInput, GetEventsQuery, importMandatoryStudentsSchema } from './events.schema';
 import { notificationsService } from '../notifications/notifications.service';
 
 export const eventsService = {
@@ -32,10 +32,12 @@ export const eventsService = {
         start_time: startTime,
         end_time: endTime,
         registration_deadline: registrationDeadline,
-        max_slots: input.max_slots,
-        training_points: input.training_points,
-        requires_approval: input.requires_approval,
-        status: 'PENDING',
+max_slots: input.max_slots,
+         training_points: input.training_points,
+         requires_approval: input.requires_approval,
+         is_global: input.is_global ?? false,
+         registration_type: input.registration_type ?? 'NORMAL',
+         status: 'PENDING',
       },
       include: {
         page: { select: { id: true, name: true, avatar_url: true } },
@@ -47,55 +49,77 @@ export const eventsService = {
   },
 
    // ── LẤY DANH SÁCH SỰ KIỆN ────────────────────────────────
-   async getEvents(query: GetEventsQuery, role?: string, userPageId?: string) {
-     const { page, limit, status, category_id, search, page_id } = query;
-     const skip = (page - 1) * limit;
+async getEvents(query: GetEventsQuery, role?: string, userPageId?: string, userId?: string) {
+      const { page, limit, status, category_id, search, page_id } = query;
+      const skip = (page - 1) * limit;
 
-     // Sinh viên chỉ thấy sự kiện APPROVED
-     // Admin thấy tất cả, Page Admin thấy của page mình
-     const statusFilter = role === 'SYSTEM_ADMIN'
-       ? status
-       : role === 'PAGE_ADMIN'
-         ? status
-         : 'APPROVED';
+      // Sinh viên chỉ thấy sự kiện APPROVED
+      // Admin thấy tất cả, Page Admin thấy của page mình
+      const statusFilter = role === 'SYSTEM_ADMIN'
+        ? status
+        : role === 'PAGE_ADMIN'
+          ? status
+          : 'APPROVED';
 
-     // For PAGE_ADMIN, override page_id with the user's managed page_id for security
-     const finalPageId = (role === 'PAGE_ADMIN' && userPageId) ? userPageId : page_id;
+      let whereConditions = [];
 
-     const where: any = {
-       ...(statusFilter && { status: statusFilter }),
-       ...(category_id && { category_id }),
-       ...(finalPageId && { page_id: finalPageId }),
-       ...(search && {
-         title: { contains: search },
-       }),
-     };
+      if (statusFilter) {
+        whereConditions.push({ status: statusFilter });
+      }
+      if (category_id) {
+        whereConditions.push({ category_id });
+      }
+      if (search) {
+        whereConditions.push({ title: { contains: search } });
+      }
 
-     const [events, total] = await Promise.all([
-       prisma.event.findMany({
-         where,
-         skip,
-         take: limit,
-         orderBy: { start_time: 'asc' },
-         include: {
-           page: { select: { id: true, name: true, avatar_url: true } },
-           category: true,
-           _count: { select: { registrations: true } },
-         },
-       }),
-       prisma.event.count({ where }),
-     ]);
+      if (role === 'STUDENT' && userId) {
+        // For student feed: show events from followed pages OR global events
+        const followedPageIds = await prisma.pageFollower
+          .findMany({ where: { user_id: userId } })
+          .then(followers => followers.map(f => f.page_id));
 
-     return {
-       data: events,
-       meta: {
-         total,
-         page,
-         limit,
-         total_pages: Math.ceil(total / limit),
-       },
-     };
-   },
+        whereConditions.push({
+          OR: [
+            { page_id: { in: followedPageIds } },
+            { is_global: true },
+          ],
+        });
+      } else {
+        // For PAGE_ADMIN, SYSTEM_ADMIN, or other roles: use original logic
+        const finalPageId = (role === 'PAGE_ADMIN' && userPageId) ? userPageId : page_id;
+        if (finalPageId) {
+          whereConditions.push({ page_id: finalPageId });
+        }
+      }
+
+      const where = whereConditions.length > 0 ? { AND: whereConditions } : {};
+
+      const [events, total] = await Promise.all([
+        prisma.event.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { start_time: 'asc' },
+          include: {
+            page: { select: { id: true, name: true, avatar_url: true } },
+            category: true,
+            _count: { select: { registrations: true } },
+          },
+        }),
+        prisma.event.count({ where }),
+      ]);
+
+      return {
+        data: events,
+        meta: {
+          total,
+          page,
+          limit,
+          total_pages: Math.ceil(total / limit),
+        },
+      };
+    },
 
   // ── LẤY CHI TIẾT 1 SỰ KIỆN ───────────────────────────────
   async getEventById(eventId: string, userId?: string) {
@@ -222,11 +246,38 @@ export const eventsService = {
       throw { statusCode: 400, message: 'Không thể xóa sự kiện đã duyệt hoặc đang diễn ra' };
     }
 
-    await prisma.event.delete({ where: { id: eventId } });
+await prisma.event.delete({ where: { id: eventId } });
   },
 
-  // ── LẤY DANH SÁCH DANH MỤC ───────────────────────────────
-  async getCategories() {
+   // ── IMPORT DANH SÁCH SINH VIÊN BẮT BUỘC (PAGE_ADMIN) ────────────
+   async importMandatoryStudents(eventId: string, studentIds: string[]) {
+     // Bước 1: Tìm các User có Profile.student_id nằm trong mảng studentIds
+     const profiles = await prisma.profile.findMany({
+       where: { student_id: { in: studentIds } },
+       select: { user_id: true },
+     });
+
+     const userIds = profiles.map(p => p.user_id);
+
+     if (userIds.length === 0) {
+       return { message: 'Không tìm thấy sinh viên nào khớp với danh sách mã sinh viên' };
+     }
+
+     // Bước 2: Tạo bản ghi đăng ký hàng loạt, bỏ qua duplicate
+     const registrations = await prisma.registration.createMany({
+       data: userIds.map(user_id => ({
+         event_id: eventId,
+         user_id,
+         status: 'REGISTERED',
+       })),
+       skipDuplicates: true,
+     });
+
+     return { message: `Đã thêm thành công ${registrations.count} sinh viên vào sự kiện` };
+   },
+
+   // ── LẤY DANH SÁCH DANH MỤC ───────────────────────────────
+   async getCategories() {
     return prisma.eventCategory.findMany({ orderBy: { id: 'asc' } });
   },
 

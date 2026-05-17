@@ -11,6 +11,7 @@ router.post('/avatar',                 authenticate, usersController.uploadAvata
 router.patch('/me',                    authenticate, usersController.updateProfile);
 router.post('/me/change-password',     authenticate, usersController.changePassword);
 router.get('/me/training-points',      authenticate, usersController.getTrainingPoints);
+router.get('/me/schedule',             authenticate, usersController.getMySchedule);
 
 // ── System Admin ──────────────────────────────────────────────
 router.get('/',                         authenticate, hasRole('SYSTEM_ADMIN'), usersController.getUsers);

@@ -124,4 +124,14 @@ export const usersController = {
       return sendSuccess(res, result, result.message);
     } catch (err) { next(err); }
   },
+  // GET /api/v1/users/me/schedule
+  async getMySchedule(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!.id;
+      const schedule = await usersService.getMySchedule(userId);
+      return sendSuccess(res, schedule, 'Lấy lịch trình cá nhân thành công');
+    } catch (error) {
+      next(error);
+    }
+  },
 };

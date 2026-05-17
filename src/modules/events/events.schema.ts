@@ -14,8 +14,10 @@ category_id: z.number().int().positive().optional(),
   end_time: z.string().datetime('Thời gian kết thúc không hợp lệ').optional(),
   registration_deadline: z.string().datetime('Hạn đăng ký không hợp lệ').optional(),
   max_slots: z.number().int().positive().optional(),
-  training_points: z.number().int().min(0).max(100).default(0),
+training_points: z.number().int().min(0).max(100).default(0),
   requires_approval: z.boolean().default(false),
+  is_global: z.boolean().optional(),
+  registration_type: z.enum(['NORMAL', 'MANDATORY', 'CHECKIN_ONLY']).optional(),
 })
 .refine(
    (data) => {
@@ -84,6 +86,10 @@ export const getEventsQuerySchema = z.object({
   category_id: z.string().optional().transform(v => v ? parseInt(v) : undefined),
   search: z.string().optional(),
   page_id: z.string().optional(),
+});
+
+export const importMandatoryStudentsSchema = z.object({
+  studentIds: z.array(z.string()).min(1, 'Danh sách mã sinh viên không được để trống'),
 });
 
 export type CreateEventInput = z.infer<typeof createEventSchema>;

@@ -6,6 +6,7 @@ import {
   updateEventSchema,
   rejectEventSchema,
   getEventsQuerySchema,
+  importMandatoryStudentsSchema,
 } from './events.schema';
 import { sendSuccess, sendError } from '../../shared/utils/response';
 import { AuthRequest } from '../../middlewares/authenticate';
@@ -192,17 +193,32 @@ export const eventsController = {
     } catch (err) { next(err); }
     },
 
-  // PATCH /api/v1/events/:id/reject
-  async rejectEvent(req: AuthRequest, res: Response, next: NextFunction) {
-    try {
-        const parsed = rejectEventSchema.safeParse(req.body);
-        if (!parsed.success) {
-        return sendError(res, parsed.error.issues[0].message, 400);
-        }
-        const result = await eventsService.rejectEvent(getParam(req.params.id), parsed.data.reason);
-        return sendSuccess(res, result, 'Từ chối sự kiện thành công');
-    } catch (err) { next(err); }
-    },
+// PATCH /api/v1/events/:id/reject
+   async rejectEvent(req: AuthRequest, res: Response, next: NextFunction) {
+     try {
+         const parsed = rejectEventSchema.safeParse(req.body);
+         if (!parsed.success) {
+         return sendError(res, parsed.error.issues[0].message, 400);
+         }
+         const result = await eventsService.rejectEvent(getParam(req.params.id), parsed.data.reason);
+         return sendSuccess(res, result, 'Từ chối sự kiện thành công');
+     } catch (err) { next(err); }
+     },
+
+   // POST /api/v1/events/:id/import-mandatory
+   async importMandatoryStudents(req: AuthRequest, res: Response, next: NextFunction) {
+     try {
+       const parsed = importMandatoryStudentsSchema.safeParse(req.body);
+       if (!parsed.success) {
+         return sendError(res, parsed.error.issues[0].message, 400);
+       }
+       const result = await eventsService.importMandatoryStudents(
+         getParam(req.params.id),
+         parsed.data.studentIds
+       );
+       return sendSuccess(res, result, result.message);
+     } catch (err) { next(err); }
+     },
 
   // DELETE /api/v1/events/:id
   async deleteEvent(req: AuthRequest, res: Response, next: NextFunction) {

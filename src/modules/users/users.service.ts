@@ -168,53 +168,106 @@ export const usersService = {
     ]);
   },
 
-  // ── XEM ĐIỂM RÈN LUYỆN CHI TIẾT ─────────────────────────
-  async getTrainingPoints(userId: string) {
-    const profile = await prisma.profile.findUnique({
-      where: { user_id: userId },
-      select: { training_points: true },
-    });
+   // ── XEM ĐIỂM RÈN LUYỆN CHI TIẾT ─────────────────────────
+   async getTrainingPoints(userId: string) {
+     const profile = await prisma.profile.findUnique({
+       where: { user_id: userId },
+       select: { training_points: true },
+     });
 
-    if (!profile) {
-      throw { statusCode: 404, message: 'Không tìm thấy hồ sơ' };
-    }
+     if (!profile) {
+       throw { statusCode: 404, message: 'Không tìm thấy hồ sơ' };
+     }
 
-    // Lấy lịch sử cộng điểm từ checkins
-    const pointHistory = await prisma.checkin.findMany({
-      where: { user_id: userId, points_awarded: { gt: 0 } },
-      orderBy: { checked_in_at: 'desc' },
-      include: {
-        registration: {
-          include: {
-            event: {
-              select: {
-                id: true, title: true, start_time: true,
-                category: { select: { name: true, color_hex: true } },
-                page: { select: { name: true } },
-              },
-            },
-          },
-        },
-      },
-    });
+     // Lấy lịch sử cộng điểm từ checkins
+     const pointHistory = await prisma.checkin.findMany({
+       where: { user_id: userId, points_awarded: { gt: 0 } },
+       orderBy: { checked_in_at: 'desc' },
+       include: {
+         registration: {
+           include: {
+             event: {
+               select: {
+                 id: true, title: true, start_time: true,
+                 category: { select: { name: true, color_hex: true } },
+                 page: { select: { name: true } },
+               },
+             },
+           },
+         },
+       },
+     });
 
-    // Thống kê theo danh mục
-    const categoryStats = await prisma.checkin.groupBy({
-      by: ['registration_id'],
-      where: { user_id: userId },
-      _sum: { points_awarded: true },
-    });
+     // Thống kê theo danh mục
+     const categoryStats = await prisma.checkin.groupBy({
+       by: ['registration_id'],
+       where: { user_id: userId },
+       _sum: { points_awarded: true },
+     });
 
-    return {
-      total_points: profile.training_points,
-      history: pointHistory.map(c => ({
-        points: c.points_awarded,
-        checked_in_at: c.checked_in_at,
-        method: c.method,
-        event: c.registration.event,
-      })),
-    };
-  },
+     return {
+       total_points: profile.training_points,
+       history: pointHistory.map(c => ({
+         points: c.points_awarded,
+         checked_in_at: c.checked_in_at,
+         method: c.method,
+         event: c.registration.event,
+       })),
+     };
+   },
+
+   // ── LẤY LỊCH TRÌNH CÁ NHÂN (STUDENT) ─────────────────────
+   async getMySchedule(userId: string) {
+     const registrations = await prisma.registration.findMany({
+       where: {
+         user_id: userId,
+         status: { in: ['REGISTERED', 'ATTENDED'] },
+         event: {
+           status: 'APPROVED',
+         },
+       },
+       orderBy: {
+         event: {
+           start_time: 'asc',
+         },
+       },
+       include: {
+         event: {
+           select: {
+             id: true,
+             title: true,
+             description: true,
+             location: true,
+             latitude: true,
+             longitude: true,
+             start_time: true,
+             end_time: true,
+             training_points: true,
+             requires_approval: true,
+             status: true,
+             banner_url: true,
+             page: {
+               select: {
+                 id: true,
+                 name: true,
+                 avatar_url: true,
+               },
+             },
+             category: {
+               select: {
+                 id: true,
+                 name: true,
+                 color_hex: true,
+               },
+             },
+           },
+         },
+       },
+     });
+
+     // Trả về danh sách sự kiện (event) từ các đăng ký
+     return registrations.map(reg => reg.event);
+   },
 
   // ── TỰ ĐỘNG TRAO HUY HIỆU sau khi check-in ───────────────
   async checkAndAwardBadges(userId: string) {

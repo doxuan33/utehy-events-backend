@@ -21,5 +21,6 @@ router.delete('/:id', authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), eve
 // ── System Admin ──────────────────────────────────────────────
 router.patch('/:id/approve', authenticate, authorize('SYSTEM_ADMIN'), eventsController.approveEvent);
 router.patch('/:id/reject',  authenticate, authorize('SYSTEM_ADMIN'), eventsController.rejectEvent);
+router.post('/:id/import-mandatory', authenticate, authorize('PAGE_ADMIN'), eventsController.importMandatoryStudents);
 
 export default router;

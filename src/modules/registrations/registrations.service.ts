@@ -54,7 +54,7 @@ export const registrationsService = {
     const conflictingEvent = await prisma.registration.findFirst({
       where: {
         user_id: userId,
-        status: { in: ['REGISTERED', 'APPROVED'] },
+        status: { in: ['REGISTERED', 'ATTENDED'] },
         event: {
           status: 'APPROVED',
           AND: [
@@ -66,12 +66,12 @@ export const registrationsService = {
       include: { event: { select: { title: true, start_time: true } } },
     });
 
-    if (conflictingEvent) {
-      throw {
-        statusCode: 409,
-        message: `Trùng lịch với sự kiện "${conflictingEvent.event.title}"`,
-      };
-    }
+     if (conflictingEvent) {
+       throw {
+         statusCode: 400,
+         message: `Bạn đã có sự kiện "${conflictingEvent.event.title}" vào thời gian này. Vui lòng hủy sự kiện kia trước khi đăng ký!`,
+       };
+     }
 
     // 6. Tạo đăng ký + tăng slot trong 1 transaction với kiểm tra slot an toàn
     const registration = await prisma.$transaction(async (tx) => {

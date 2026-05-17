@@ -148,8 +148,10 @@ model Event {
   max_slots             Int?
   current_slots         Int            @default(0)
   training_points       Int            @default(0)
-  requires_approval     Boolean        @default(false)
-  status                EventStatus    @default(PENDING)
+requires_approval     Boolean        @default(false)
+   is_global             Boolean        @default(false)
+   registration_type     RegistrationType @default(NORMAL)
+   status                EventStatus    @default(PENDING)
   rejection_reason      String?        @db.Text
   created_at            DateTime       @default(now())
   updated_at            DateTime       @updatedAt
@@ -350,4 +352,10 @@ enum JoinRequestStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum RegistrationType {
+  NORMAL
+  MANDATORY
+  CHECKIN_ONLY
 }
