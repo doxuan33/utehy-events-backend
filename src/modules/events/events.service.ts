@@ -47,6 +47,16 @@ export const eventsService = {
       },
     });
 
+    const systemAdmins = await prisma.user.findMany({
+      where: { role: 'SYSTEM_ADMIN' },
+      select: { id: true }
+    });
+    const adminIds = systemAdmins.map(admin => admin.id);
+    if (adminIds.length > 0) {
+      await notificationsService.notifyNewEventRequest(adminIds, page.name, event.title, event.id)
+        .catch(err => console.error('Lỗi gửi thông báo tạo sự kiện:', err));
+    }
+
     return event;
   },
 
@@ -196,12 +206,22 @@ export const eventsService = {
       },
     });
 
+    const registrations = await prisma.registration.findMany({
+      where: { event_id: eventId },
+      select: { user_id: true }
+    });
+    const studentIds = registrations.map(r => r.user_id);
+    if (studentIds.length > 0) {
+      await notificationsService.notifyEventUpdateOrCancel(studentIds, updated.title, eventId, false)
+        .catch(err => console.error('Lỗi gửi thông báo Update Event:', err));
+    }
+
     return updated;
   },
 
   // ── DUYỆT SỰ KIỆN (SYSTEM_ADMIN) ─────────────────────────
   async approveEvent(eventId: string) {
-    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    const event = await prisma.event.findUnique({ where: { id: eventId }, include: { page: true } });
 
     if (!event) {
       throw { statusCode: 404, message: 'Không tìm thấy sự kiện' };
@@ -214,14 +234,25 @@ export const eventsService = {
       where: { id: eventId },
       data: { status: 'APPROVED' },
     });
-    await notificationsService.notifyEventApproved(eventId);
-    await notificationsService.notifyNewEvent(eventId);
+
+    const pageOwner = await prisma.pageMember.findFirst({
+      where: { page_id: event.page_id, is_owner: true },
+      select: { user_id: true },
+    });
+    if (pageOwner?.user_id) {
+      await notificationsService.notifyEventApprovalResult(pageOwner.user_id, event.title, event.id, true)
+        .catch(err => console.error(err));
+    }
+    if (event.is_global) {
+      await notificationsService.notifyGlobalEvent(event.page.name, event.title, event.id)
+        .catch(err => console.error('Lỗi gửi thông báo Global Event:', err));
+    }
     return updated;
   },
 
-  // ── TỪ CHỐI SỰ KIỆN (SYSTEM_ADMIN) ──────────────────────
+// ── TỪ CHỐI SỰ KIỆN (SYSTEM_ADMIN) ──────────────────────
   async rejectEvent(eventId: string, reason: string) {
-    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    const event = await prisma.event.findUnique({ where: { id: eventId }, include: { page: true } });
 
     if (!event) {
       throw { statusCode: 404, message: 'Không tìm thấy sự kiện' };
@@ -235,6 +266,14 @@ export const eventsService = {
       data: { status: 'REJECTED', rejection_reason: reason },
     });
 
+    const pageOwner = await prisma.pageMember.findFirst({
+      where: { page_id: event.page_id, is_owner: true },
+      select: { user_id: true },
+    });
+    if (pageOwner?.user_id) {
+      await notificationsService.notifyEventApprovalResult(pageOwner.user_id, event.title, event.id, false, reason)
+        .catch(err => console.error(err));
+    }
     return updated;
   },
 
@@ -252,7 +291,18 @@ export const eventsService = {
       throw { statusCode: 400, message: 'Không thể xóa sự kiện đã duyệt hoặc đang diễn ra' };
     }
 
+    const registrations = await prisma.registration.findMany({
+      where: { event_id: eventId },
+      select: { user_id: true }
+    });
+    const studentIds = registrations.map(r => r.user_id);
+
     await prisma.event.delete({ where: { id: eventId } });
+
+    if (studentIds.length > 0) {
+      await notificationsService.notifyEventUpdateOrCancel(studentIds, event.title, eventId, true)
+        .catch(err => console.error('Lỗi gửi thông báo Cancel Event:', err));
+    }
   },
 
   // ── IMPORT DANH SÁCH SINH VIÊN BẮT BUỘC (PAGE_ADMIN) ────────────
@@ -278,6 +328,13 @@ export const eventsService = {
       })),
       skipDuplicates: true,
     });
+
+    // Bước 3: Gửi thông báo cho sinh viên được thêm vào sự kiện bắt buộc
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (event) {
+      await notificationsService.notifyMandatoryEvent(userIds, event.title, event.id)
+        .catch(err => console.error('Lỗi gửi thông báo mandatory event:', err));
+    }
 
     return { message: `Đã thêm thành công ${registrations.count} sinh viên vào sự kiện` };
   },

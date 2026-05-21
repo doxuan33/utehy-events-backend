@@ -69,33 +69,34 @@ export const checkinService = {
          },
        });
 
-       await tx.profile.update({
-         where: { user_id: userId },
-         data: { training_points: { increment: event.training_points } },
-       });
-       return checkin;
-     });
+await tx.profile.update({
+          where: { user_id: userId },
+          data: { training_points: { increment: event.training_points } },
+        });
+        return checkin;
+      });
 
     await usersService.checkAndAwardBadges(userId);
     await notificationsService.notifyCheckinSuccess(
-        userId,
-        event.title,
-        event.training_points
-    );
+      userId,
+      event.title,
+      event.training_points,
+      event.id
+    ).catch(err => console.error('Lỗi gửi thông báo checkin:', err));
 
     const profile = await prisma.profile.findUnique({
-        where: { user_id: userId },
-        select: { training_points: true, full_name: true },
-        });
+      where: { user_id: userId },
+      select: { training_points: true, full_name: true },
+    });
 
-        return {
-        success: true,
-        message: `Điểm danh thành công! +${event.training_points} điểm rèn luyện`,
-        points_earned: event.training_points,
-        total_points: profile?.training_points ?? 0,
-        student_name: profile?.full_name,
-        event_title: event.title,
-        checked_in_at: result.checked_in_at,
+    return {
+      success: true,
+      message: `Điểm danh thành công! +${event.training_points} điểm rèn luyện`,
+      points_earned: event.training_points,
+      total_points: profile?.training_points ?? 0,
+      student_name: profile?.full_name,
+      event_title: event.title,
+      checked_in_at: result.checked_in_at,
     };
   },
 
@@ -163,9 +164,13 @@ export const checkinService = {
        return checkin;
      });
 
-    await usersService.checkAndAwardBadges(userId);
+await usersService.checkAndAwardBadges(userId);
     await notificationsService.notifyCheckinSuccess(
-      userId, event.title, event.training_points);
+      userId,
+      event.title,
+      event.training_points,
+      event.id
+    ).catch(err => console.error('Lỗi gửi thông báo checkin:', err));
 
     const profile = await prisma.profile.findUnique({
       where: { user_id: userId },
@@ -241,6 +246,9 @@ export const checkinService = {
 
     await usersService.checkAndAwardBadges(profile.user.id);
 
+    await notificationsService.notifyCheckinSuccess(profile.user.id, event.title, event.training_points, input.event_id)
+      .catch(err => console.error('Lỗi gửi thông báo manual checkin:', err));
+
     return {
       success: true,
       message: `Điểm danh bù thành công cho ${profile.full_name}`,
@@ -278,6 +286,7 @@ export const checkinService = {
     if (users.length === 0) throw { statusCode: 404, message: 'Không tìm thấy sinh viên nào trong hệ thống' };
 
     let successCount = 0;
+    const successfulUserIds: string[] = [];
 
     await prisma.$transaction(async (tx) => {
       for (const user of users) {
@@ -301,9 +310,18 @@ export const checkinService = {
             },
           });
           successCount++;
+          successfulUserIds.push(user.id);
         }
       }
     });
+
+    if (successfulUserIds.length > 0) {
+      Promise.all(
+        successfulUserIds.map(userId =>
+          notificationsService.notifyCheckinSuccess(userId, event.title, event.training_points, eventId)
+        )
+      ).catch(err => console.error('Lỗi gửi thông báo import checkin:', err));
+    }
 
     return { message: `Đã điểm danh bù thành công ${successCount} sinh viên.` };
   },
