@@ -8,6 +8,7 @@ import {
   GetNewsfeedQuery,
   GetCommentsQuery,
 } from './posts.schema';
+import { notificationsService } from '../notifications/notifications.service';
 
 export const postsService = {
 
@@ -67,6 +68,17 @@ export const postsService = {
         _count: { select: { likes: true, comments: true } },
       },
     });
+
+    const followers = await prisma.pageFollower.findMany({ where: { page_id: input.page_id }, select: { user_id: true } });
+    const members = await prisma.pageMember.findMany({ where: { page_id: input.page_id }, select: { user_id: true } });
+    const audienceIds = [...new Set([...followers.map(f => f.user_id), ...members.map(m => m.user_id)])];
+
+    const filteredAudience = audienceIds.filter(id => id !== authorId);
+
+    if (filteredAudience.length > 0) {
+      await notificationsService.notifyNewPost(filteredAudience, post.page.name, post.id)
+        .catch(err => console.error('Lỗi gửi thông báo bài viết:', err));
+    }
 
     return this.formatPost(post, authorId);
   },

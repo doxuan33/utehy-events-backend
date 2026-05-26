@@ -1,5 +1,6 @@
 import prisma from '../../config/database';
 import { CreatePageInput, UpdatePageInput, AddMemberInput, JoinPageInput, UpdateMemberRoleInput } from './pages.schema';
+import { notificationsService } from '../notifications/notifications.service';
 
 export const pagesService = {
 
@@ -270,7 +271,7 @@ export const pagesService = {
       throw { statusCode: 409, message: 'Bạn đã gửi yêu cầu gia nhập rồi' };
     }
 
-    return prisma.pageJoinRequest.create({
+    const joinRequest = await prisma.pageJoinRequest.create({
       data: {
         page_id: pageId,
         user_id: userId,
@@ -285,6 +286,28 @@ export const pagesService = {
         },
       },
     });
+
+    const pageManagers = await prisma.pageMember.findMany({
+      where: { page_id: pageId },
+      include: { user: { select: { role: true } } }
+    });
+
+    let adminIds = pageManagers
+      .filter(m => m.user.role === 'PAGE_ADMIN')
+      .map(m => m.user_id);
+
+    if (adminIds.length === 0) {
+      adminIds = pageManagers.map(m => m.user_id);
+    }
+
+    const userProfile = await prisma.profile.findUnique({ where: { user_id: userId } });
+
+    if (adminIds.length > 0 && userProfile) {
+      await notificationsService.notifyNewJoinRequest(adminIds, userProfile.full_name, pageId)
+        .catch(console.error);
+    }
+
+    return joinRequest;
   },
 
   // ── LẤY DANH SÁCH YÊU CẦU GIA NHẬP (SYSTEM_ADMIN / PAGE_ADMIN) ──
@@ -340,23 +363,17 @@ export const pagesService = {
           where: { id: userId },
           data: { role: 'PAGE_ADMIN' },
         });
-
-        // Tạo notification
-        await tx.notification.create({
-          data: {
-            user_id: userId,
-            type: 'SYSTEM',
-            title: 'Được chấp nhận vào CLB',
-            body: `Bạn đã được chấp nhận gia nhập CLB`,
-            data: JSON.stringify({ page_id: pageId }),
-          },
-        });
       });
     } else {
       await prisma.pageJoinRequest.update({
         where: { page_id_user_id: { page_id: pageId, user_id: userId } },
         data: { status: 'REJECTED' },
       });
+    }
+
+    const page = await prisma.page.findUnique({ where: { id: pageId }, select: { name: true } });
+    if (page) {
+      await notificationsService.notifyClubJoinResult(userId, page.name, pageId, action === 'APPROVED');
     }
 
     return request;

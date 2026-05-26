@@ -10,7 +10,7 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
   try {
     // Lấy token từ Header (Bearer) hoặc từ Query String (cho SSE)
     const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.split(' ')[1]) || (req.query.token as string);
+    const token = (authHeader && authHeader.split(' ')[1]) || (req.query.token as string) || (req.query.access_token as string);
 
     if (!token) {
       return res.status(401).json({ 

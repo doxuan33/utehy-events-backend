@@ -1,5 +1,6 @@
 import prisma from '../../config/database';
 import { GetRegistrationsQuery, UpdateRegistrationInput } from './registrations.schema';
+import { notificationsService } from '../notifications/notifications.service';
 
 export const registrationsService = {
 
@@ -132,6 +133,14 @@ export const registrationsService = {
 
       return newReg;
     });
+
+    if (event.max_slots !== null && event.current_slots + 1 === event.max_slots) {
+      const pageOwner = await prisma.pageMember.findFirst({ where: { page_id: event.page_id, is_owner: true } });
+      if (pageOwner) {
+        await notificationsService.notifyEventFull(pageOwner.user_id, event.title, eventId)
+          .catch(err => console.error('Lỗi thông báo full slot:', err));
+      }
+    }
 
     return registration;
   },

@@ -465,13 +465,7 @@ async function main() {
         body: 'Bạn đã điểm danh sự kiện "Ngày Hội Tình Nguyện Mùa Xuân" và nhận +15 điểm rèn luyện',
         is_read: true,
       },
-      {
-        user_id: sv2.id,
-        type: 'EVENT_NEW',
-        title: '🎉 Sự kiện mới từ CLB Học Thuật UTEHY',
-        body: 'Hội thảo AI và Machine Learning 2026',
-        is_read: false,
-      },
+      
     ],
   });
 

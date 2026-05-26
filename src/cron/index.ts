@@ -1,9 +1,7 @@
 import cron from 'node-cron';
 import prisma from '../config/database';
-import { Prisma } from '@prisma/client';
 import { notificationsService } from '../modules/notifications/notifications.service';
 import { logger } from '../shared/utils/logger';
-import { CreateNotificationInput } from '../modules/notifications/notifications.schema';
 
 // ── Job 1: Nhắc nhở sự kiện (mỗi 15 phút) ─────────────────────
 const eventReminderJob = cron.schedule('*/15 * * * *', async () => {
@@ -37,40 +35,15 @@ const eventReminderJob = cron.schedule('*/15 * * * *', async () => {
       return;
     }
 
-    // Thu thập tất cả thông báo cần tạo
-    const notificationsData: CreateNotificationInput[] = [];
-
     for (const event of upcomingEvents) {
-      for (const reg of event.registrations) {
-        notificationsData.push({
-          user_id: reg.user_id,
-          type: 'EVENT_REMINDER' as const,
-          title: 'Nhắc nhở tham gia sự kiện',
-          body: `Sự kiện "${event.title}" sẽ diễn ra trong vòng 2 giờ tới, đừng quên tham gia nhé!`,
-          data: { event_id: event.id },
-        });
-      }
-    }
-
-    // Sử dụng service để tạo bulk notifications
-    const chunkSize = 1000;
-    for (let i = 0; i < notificationsData.length; i += chunkSize) {
-      const chunk = notificationsData.slice(i, i + chunkSize);
-      for (const notif of chunk) {
-        await prisma.notification.create({
-          data: {
-            user_id: notif.user_id,
-            type: notif.type,
-            title: notif.title,
-            body: notif.body,
-            data: notif.data ? JSON.stringify(notif.data) : Prisma.JsonNull,
-          },
-        });
+      const userIds = event.registrations.map(reg => reg.user_id);
+      if (userIds.length > 0) {
+        await notificationsService.notifyEventReminder(userIds, event.title, event.id);
       }
     }
 
     logger.info(
-      `[CRON EVENT_REMINDER] Đã tạo ${notificationsData.length} thông báo nhắc nhở cho ${upcomingEvents.length} sự kiện`
+      `[CRON EVENT_REMINDER] Đã gửi nhắc nhở cho ${upcomingEvents.length} sự kiện`
     );
   } catch (error: any) {
     logger.error('[CRON EVENT_REMINDER] Lỗi:', error?.message);
@@ -114,14 +87,11 @@ const eventCloseJob = cron.schedule('*/5 * * * *', async () => {
       });
     });
 
-    // Thu thập thông báo cho sinh viên ATTENDED
-    const notificationsData: CreateNotificationInput[] = [];
-
     for (const event of expiredEvents) {
-      for (const reg of (event as any).registrations) {
-        notificationsData.push({
-          user_id: reg.user_id,
-          type: 'SYSTEM' as const,
+      const userIds = event.registrations.map(reg => reg.user_id);
+      if (userIds.length > 0) {
+        await notificationsService.createBulkNotifications(userIds, {
+          type: 'SYSTEM',
           title: 'Kết thúc sự kiện - Đánh giá Ban tổ chức',
           body: `Sự kiện "${event.title}" đã kết thúc. Hãy vào đánh giá 5 sao cho Ban tổ chức nhé!`,
           data: { event_id: event.id },
@@ -129,25 +99,8 @@ const eventCloseJob = cron.schedule('*/5 * * * *', async () => {
       }
     }
 
-    // Tạo thông báo
-    const chunkSize = 1000;
-    for (let i = 0; i < notificationsData.length; i += chunkSize) {
-      const chunk = notificationsData.slice(i, i + chunkSize);
-      for (const notif of chunk) {
-        await prisma.notification.create({
-          data: {
-            user_id: notif.user_id,
-            type: notif.type,
-            title: notif.title,
-            body: notif.body,
-            data: notif.data ? JSON.stringify(notif.data) : Prisma.JsonNull,
-          },
-        });
-      }
-    }
-
     logger.info(
-      `[CRON EVENT_CLOSE] Đã đóng ${expiredEvents.length} sự kiện và tạo ${notificationsData.length} thông báo đánh giá`
+      `[CRON EVENT_CLOSE] Đã đóng ${expiredEvents.length} sự kiện và gửi thông báo đánh giá`
     );
   } catch (error: any) {
     logger.error('[CRON EVENT_CLOSE] Lỗi:', error?.message);

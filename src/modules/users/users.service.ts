@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import prisma from '../../config/database';
 import { UpdateProfileInput, ChangePasswordInput, GetUsersQuery } from './users.schema';
+import { notificationsService } from '../notifications/notifications.service';
 
 // Danh sách huy hiệu và điều kiện trao tự động
 const BADGE_CONDITIONS = [
@@ -312,6 +313,8 @@ export const usersService = {
           await prisma.userBadge.create({
             data: { profile_id: profile.id, badge_id: badge.id },
           });
+          await notificationsService.notifyBadgeUnlocked(userId, badge.name)
+            .catch(err => console.error('Lỗi gửi thông báo huy hiệu:', err));
         }
       }
     }

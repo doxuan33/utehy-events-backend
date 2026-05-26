@@ -184,9 +184,8 @@ export const notificationsService = {
   },
 
   // ── NHÓM D: PAGE ADMIN ────────────────────────────────
-  async notifyNewJoinRequest(pageAdminId: string, studentName: string, pageId: string) {
-    await this.createNotification({
-      user_id: pageAdminId,
+  async notifyNewJoinRequest(pageAdminIds: string[], studentName: string, pageId: string) {
+    await this.createBulkNotifications(pageAdminIds, {
       type: 'NEW_JOIN_REQUEST',
       title: '👋 Yêu cầu tham gia mới',
       body: `Sinh viên ${studentName} vừa gửi yêu cầu gia nhập Câu lạc bộ của bạn. Hãy xét duyệt ngay.`,
