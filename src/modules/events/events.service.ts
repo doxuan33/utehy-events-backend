@@ -235,22 +235,29 @@ export const eventsService = {
       data: { status: 'APPROVED' },
     });
 
-    const pageOwner = await prisma.pageMember.findFirst({
-      where: { page_id: event.page_id, is_owner: true },
+    const pageAdmins = await prisma.pageMember.findMany({
+      where: { page_id: event.page_id },
       select: { user_id: true },
     });
-    if (pageOwner?.user_id) {
-      await notificationsService.notifyEventApprovalResult(pageOwner.user_id, event.title, event.id, true)
-        .catch(err => console.error(err));
+    if (pageAdmins.length > 0) {
+      await Promise.all(
+        pageAdmins.map(({ user_id }) =>
+          notificationsService
+            .notifyEventApprovalResult(user_id, event.title, event.id, true)
+            .catch((err) => console.error(err))
+        )
+      );
     }
+
     if (event.is_global) {
-      await notificationsService.notifyGlobalEvent(event.page.name, event.title, event.id)
-        .catch(err => console.error('Lỗi gửi thông báo Global Event:', err));
+      await notificationsService
+        .notifyGlobalEvent(event.page.name, event.title, event.id)
+        .catch((err) => console.error('Lỗi gửi thông báo Global Event:', err));
     }
+
     return updated;
   },
 
-// ── TỪ CHỐI SỰ KIỆN (SYSTEM_ADMIN) ──────────────────────
   async rejectEvent(eventId: string, reason: string) {
     const event = await prisma.event.findUnique({ where: { id: eventId }, include: { page: true } });
 
@@ -266,14 +273,20 @@ export const eventsService = {
       data: { status: 'REJECTED', rejection_reason: reason },
     });
 
-    const pageOwner = await prisma.pageMember.findFirst({
-      where: { page_id: event.page_id, is_owner: true },
+    const pageAdmins = await prisma.pageMember.findMany({
+      where: { page_id: event.page_id },
       select: { user_id: true },
     });
-    if (pageOwner?.user_id) {
-      await notificationsService.notifyEventApprovalResult(pageOwner.user_id, event.title, event.id, false, reason)
-        .catch(err => console.error(err));
+    if (pageAdmins.length > 0) {
+      await Promise.all(
+        pageAdmins.map(({ user_id }) =>
+          notificationsService
+            .notifyEventApprovalResult(user_id, event.title, event.id, false, reason)
+            .catch((err) => console.error(err))
+        )
+      );
     }
+
     return updated;
   },
 
@@ -431,5 +444,108 @@ export const eventsService = {
       .map(item => item.event);
 
     return topEvents;
+  },
+
+  async closeEventManually(eventId: string, pageId: string) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        title: true,
+        page_id: true,
+        status: true,
+        is_penalty_active: true,
+        penalty_points: true,
+      },
+    });
+
+    if (!event) {
+      throw { statusCode: 404, message: 'Không tìm thấy sự kiện' };
+    }
+    if (event.page_id !== pageId) {
+      throw { statusCode: 403, message: 'Bạn không có quyền đóng sự kiện này' };
+    }
+    if (event.status === 'CLOSED') {
+      throw { statusCode: 400, message: 'Sự kiện đã được đóng trước đó' };
+    }
+
+    const now = new Date();
+
+    // Lấy tất cả registrations có trạng thái REGISTERED / APPROVED / ATTENDED
+    const allRegistrations = await prisma.registration.findMany({
+      where: {
+        event_id: eventId,
+        status: { in: ['REGISTERED', 'APPROVED', 'ATTENDED'] },
+      },
+      select: { user_id: true, status: true },
+    });
+
+    const absentUserIds = allRegistrations
+      .filter(r => r.status === 'REGISTERED' || r.status === 'APPROVED')
+      .map(r => r.user_id);
+
+    const attendedUserIds = allRegistrations
+      .filter(r => r.status === 'ATTENDED')
+      .map(r => r.user_id);
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Đóng sự kiện, chốt end_time ngay lúc này
+      await tx.event.update({
+        where: { id: eventId },
+        data: { status: 'CLOSED', end_time: now },
+      });
+
+      // 2. Cập nhật trạng thái các đăng ký chưa điểm danh thành ABSENT
+      if (absentUserIds.length > 0) {
+        await tx.registration.updateMany({
+          where: {
+            event_id: eventId,
+            status: { in: ['REGISTERED', 'APPROVED'] },
+          },
+          data: {
+            status: 'ABSENT',
+            is_penalized: event.is_penalty_active ? true : false,
+          },
+        });
+
+        // 3. Trừ điểm rèn luyện nếu sự kiện bật phạt
+        if (event.is_penalty_active && event.penalty_points > 0) {
+          const profiles = await tx.profile.findMany({
+            where: { user_id: { in: absentUserIds } },
+            select: { id: true, training_points: true },
+          });
+
+          for (const profile of profiles) {
+            await tx.profile.update({
+              where: { id: profile.id },
+              data: {
+                training_points: Math.max(0, profile.training_points - event.penalty_points),
+              },
+            });
+          }
+        }
+      }
+    });
+
+    // 4. Gửi thông báo ngoài transaction
+    if (event.is_penalty_active && event.penalty_points > 0 && absentUserIds.length > 0) {
+      await notificationsService.createBulkNotifications(absentUserIds, {
+        type: 'PENALTY_APPLIED',
+        title: 'Phạt điểm rèn luyện do vắng mặt',
+        body: `📉 Bạn bị trừ ${event.penalty_points} điểm rèn luyện do vắng mặt không phép tại sự kiện "${event.title}".`,
+        data: { event_id: eventId },
+      }).catch(err => console.error('[closeEventManually] Lỗi gửi thông báo phạt:', err));
+    }
+
+    if (attendedUserIds.length > 0) {
+      await notificationsService.createBulkNotifications(attendedUserIds, {
+        type: 'SYSTEM',
+        title: 'Kết thúc sự kiện - Đánh giá Ban tổ chức',
+        body: `Sự kiện "${event.title}" đã kết thúc. Hãy vào đánh giá 5 sao cho Ban tổ chức nhé!`,
+        data: { event_id: eventId },
+      }).catch(err => console.error('[closeEventManually] Lỗi gửi thông báo đánh giá:', err));
+    }
+
+    return { success: true, absent_count: absentUserIds.length, attended_count: attendedUserIds.length };
   },
 };

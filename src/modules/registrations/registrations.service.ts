@@ -6,7 +6,6 @@ export const registrationsService = {
 
   // ── ĐĂNG KÝ THAM GIA SỰ KIỆN (STUDENT) ──────────────────
   async registerEvent(userId: string, eventId: string) {
-    // 1. Kiểm tra sự kiện tồn tại và đang APPROVED
     const event = await prisma.event.findUnique({
       where: { id: eventId },
     });
@@ -18,24 +17,20 @@ export const registrationsService = {
       throw { statusCode: 400, message: 'Sự kiện chưa được duyệt hoặc đã đóng đăng ký' };
     }
 
-    // 2. Kiểm tra hạn đăng ký
     if (new Date() > event.registration_deadline) {
       throw { statusCode: 400, message: 'Đã hết hạn đăng ký sự kiện này' };
     }
 
-    // 3. Kiểm tra đã đăng ký chưa
     const existing = await prisma.registration.findUnique({
       where: { user_id_event_id: { user_id: userId, event_id: eventId } },
     });
     if (existing) {
       if (existing.status === 'CANCELLED') {
-        // Cho phép đăng ký lại nếu đã từng hủy
         const updated = await prisma.registration.update({
           where: { id: existing.id },
-          data: { status: event.requires_approval ? 'REGISTERED' : 'REGISTERED' },
+          data: { status: 'REGISTERED' },
         });
 
-        // Tăng current_slots
         await prisma.event.update({
           where: { id: eventId },
           data: { current_slots: { increment: 1 } },
@@ -46,12 +41,10 @@ export const registrationsService = {
       throw { statusCode: 409, message: 'Bạn đã đăng ký sự kiện này rồi' };
     }
 
-    // 4. Kiểm tra còn slot không
     if (event.max_slots !== null && event.current_slots >= event.max_slots) {
       throw { statusCode: 400, message: 'Sự kiện đã hết chỗ đăng ký' };
     }
 
-    // 5. Kiểm tra trùng lịch
     const conflictingEvent = await prisma.registration.findFirst({
       where: {
         user_id: userId,
@@ -74,9 +67,7 @@ export const registrationsService = {
       };
     }
 
-    // 6. Tạo đăng ký + tăng slot trong 1 transaction với kiểm tra slot an toàn
     const registration = await prisma.$transaction(async (tx) => {
-      // Lấy thông tin slot hiện tại để kiểm tra (atomic)
       const eventData = await tx.event.findUnique({
         where: { id: eventId },
         select: { max_slots: true, current_slots: true, requires_approval: true },
@@ -94,7 +85,7 @@ export const registrationsService = {
         data: {
           user_id: userId,
           event_id: eventId,
-          status: eventData.requires_approval ? 'REGISTERED' : 'REGISTERED',
+          status: 'REGISTERED',
         },
         include: {
           event: {
@@ -111,8 +102,6 @@ export const registrationsService = {
         },
       });
 
-      // Tăng slot bằng cách update với điều kiện: chỉ tăng nếu current_slots < max_slots
-      // Điều này đảm bảo atomic và tránh race condition
       try {
         await tx.event.update({
           where: {
@@ -124,7 +113,6 @@ export const registrationsService = {
           data: { current_slots: { increment: 1 } },
         });
       } catch (err: any) {
-        // P2025: Nếu where không khớp (đã hết slot), rollback
         if (err.code === 'P2025' || err.meta?.cause?.code === 'P2025') {
           throw { statusCode: 400, message: 'Sự kiện đã hết chỗ đăng ký (race condition)' };
         }
@@ -135,10 +123,18 @@ export const registrationsService = {
     });
 
     if (event.max_slots !== null && event.current_slots + 1 === event.max_slots) {
-      const pageOwner = await prisma.pageMember.findFirst({ where: { page_id: event.page_id, is_owner: true } });
-      if (pageOwner) {
-        await notificationsService.notifyEventFull(pageOwner.user_id, event.title, eventId)
-          .catch(err => console.error('Lỗi thông báo full slot:', err));
+      const pageAdmins = await prisma.pageMember.findMany({
+        where: { page_id: event.page_id },
+        select: { user_id: true },
+      });
+      if (pageAdmins.length > 0) {
+        await Promise.all(
+          pageAdmins.map(({ user_id }) =>
+            notificationsService
+              .notifyEventFull(user_id, event.title, eventId)
+              .catch((err) => console.error('Lỗi thông báo full slot:', err))
+          )
+        );
       }
     }
 

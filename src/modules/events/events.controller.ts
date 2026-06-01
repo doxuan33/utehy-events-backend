@@ -232,4 +232,18 @@ export const eventsController = {
       return sendSuccess(res, null, 'Xóa sự kiện thành công');
     } catch (err) { next(err); }
   },
+
+  // POST /api/v1/events/:id/close
+  async closeEventManually(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const eventId = getParam(req.params.id);
+      // Lấy pageId từ req.user (PAGE_ADMIN) hoặc body (SYSTEM_ADMIN)
+      const pageId = req.user?.page_id || req.body?.page_id;
+      if (!pageId) {
+        return sendError(res, 'Vui lòng cung cấp page_id', 400);
+      }
+      const result = await eventsService.closeEventManually(eventId, pageId);
+      return sendSuccess(res, result, `Đã đóng sự kiện. Vắng mặt: ${result.absent_count}, Đã tham gia: ${result.attended_count}`);
+    } catch (err) { next(err); }
+  },
 };

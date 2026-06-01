@@ -23,4 +23,7 @@ router.patch('/:id/approve', authenticate, authorize('SYSTEM_ADMIN'), eventsCont
 router.patch('/:id/reject',  authenticate, authorize('SYSTEM_ADMIN'), eventsController.rejectEvent);
 router.post('/:id/import-mandatory', authenticate, authorize('PAGE_ADMIN'), eventsController.importMandatoryStudents);
 
+// ── Đóng sự kiện thủ công (PAGE_ADMIN hoặc SYSTEM_ADMIN) ─────
+router.post('/:id/close', authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), eventsController.closeEventManually);
+
 export default router;

@@ -18,6 +18,7 @@ export const createNotificationSchema = z.object({
     'EVENT_FULL',
     'NEW_EVENT_REQUEST',
     'NEW_CLUB_REQUEST',
+    'PENALTY_APPLIED',
     'SYSTEM',
   ]),
   title: z.string().min(1).max(255),

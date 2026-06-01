@@ -147,11 +147,13 @@ model Event {
   registration_deadline DateTime
   max_slots             Int?
   current_slots         Int            @default(0)
-  training_points       Int            @default(0)
-requires_approval     Boolean        @default(false)
-   is_global             Boolean        @default(false)
-   registration_type     RegistrationType @default(NORMAL)
-   status                EventStatus    @default(PENDING)
+  training_points       Int              @default(0)
+  requires_approval     Boolean          @default(false)
+  is_global             Boolean          @default(false)
+  is_penalty_active     Boolean          @default(false)
+  penalty_points        Int              @default(0)
+  registration_type     RegistrationType @default(NORMAL)
+  status                EventStatus      @default(PENDING)
   rejection_reason      String?        @db.Text
   created_at            DateTime       @default(now())
   updated_at            DateTime       @updatedAt
@@ -175,6 +177,7 @@ model Registration {
   status        RegistrationStatus @default(REGISTERED)
   registered_at DateTime           @default(now())
   updated_at    DateTime           @updatedAt
+  is_penalized  Boolean            @default(false)
   checkin       Checkin?
   event         Event              @relation(fields: [event_id], references: [id], onDelete: Cascade)
   user          User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
@@ -355,6 +358,7 @@ enum NotificationType {
   EVENT_FULL
   NEW_EVENT_REQUEST
   NEW_CLUB_REQUEST
+  PENALTY_APPLIED
   SYSTEM
 }
 
