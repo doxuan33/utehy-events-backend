@@ -37,6 +37,8 @@ export const eventsService = {
         requires_approval: input.requires_approval,
         is_global: input.is_global ?? false,
         registration_type: input.registration_type ?? 'NORMAL',
+        is_penalty_active: input.is_penalty_active ?? false,
+        penalty_points: input.penalty_points ?? 0,
         status: 'PENDING',
       },
       include: {
