@@ -309,11 +309,17 @@ await usersService.checkAndAwardBadges(userId);
               points_awarded: event.training_points,
             },
           });
+
+          await tx.profile.update({
+            where: { user_id: user.id },
+            data: { training_points: { increment: event.training_points } },
+          });
+
           successCount++;
           successfulUserIds.push(user.id);
         }
       }
-    });
+    }, { maxWait: 10000, timeout: 30000 });
 
     if (successfulUserIds.length > 0) {
       Promise.all(
